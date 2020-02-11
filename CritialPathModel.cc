@@ -11,8 +11,8 @@ using namespace std;
 #define BC_TREE_TYPE 0
 #define BW_CORE 6  //6GB/s/core == 6B/ns
 #define NETWORK_LAT 3810 // send 0 Byte
-#define NPROW 16
-#define NPCOL 16
+#define NPROW 2 
+#define NPCOL 2 
 
 //vector<unsigned long int> visited(SIZE, 0);
 vector<vector<bool>> graph(SIZE, vector<bool>(SIZE, 0));
@@ -121,22 +121,21 @@ void find_path(Cell point, vector<vector<Cell>>& path, vector<Cell> local_path, 
         if (point.row == point.col) {
             row_end += 1;
 #ifdef DEBUG
-        	        cout << "I am here 2.1, this point row_end = " << row_end << endl;
-                    cout.flush();
+            cout << "I am here 2.1, this point row_end = " << row_end << endl;
+            cout.flush();
 #endif
 		    while (row_end <= maxcol){
                 if (graph[row_end][cur_col] == 1) {
-	        	    new_cells[child_count].row = row_end;
-                	new_cells[child_count].col = cur_col;
                 	if (mylevel[row_end][cur_col] < l){
                         mylevel[row_end][cur_col] = l;
-				    }
-                	child_count++;
-        
+	        	        new_cells[child_count].row = row_end;
+                	    new_cells[child_count].col = cur_col;
+                	    child_count++;
 #ifdef DEBUG
-        	        cout << "I am here 2.2, this point (" << point.row << ") find children (row col) = (" << row_end << "," << cur_col << ")" << endl;
-                    cout.flush();
+            	        cout << "I am here 2.2, this point (" << point.row << ") find children (row col) = (" << row_end << "," << cur_col << ")" << endl;
+                        cout.flush();
 #endif
+				    }
                 }
             	row_end++;
        		}
@@ -144,15 +143,34 @@ void find_path(Cell point, vector<vector<Cell>>& path, vector<Cell> local_path, 
     		cout << "I am here 2.3, this point (" << point.row << ") find children total = " << child_count << endl;
             cout.flush();
 #endif
-    		for (int i = 0; i < child_count; i++) {
+            if (child_count == 0) {
 #ifdef DEBUG
-    		cout << "I am here 2.4, start " << new_cells[i].row << " , " << new_cells[i].col << endl;
-            cout.flush();
+                cout << "find a path, size = " << local_path.size() << " current max = "<< maxpathlength << " current total path num = " <<  path.size() <<endl;
+                cout.flush();
 #endif
-        		find_path(new_cells[i], path, local_path, l);
+                if (maxpathlength < local_path.size()) {
+                    path.push_back(local_path);
+                    maxpathlength = local_path.size();
 #ifdef DEBUG
-    		cout << "I am here 2.4, end " << new_cells[i].row << " , " << new_cells[i].col << endl;
-            cout.flush();
+                    for (auto cell : local_path) {
+                        cell.display();
+                    }
+                    cout << endl;
+#endif
+                }else{
+                    local_path.clear();
+                }
+            }
+    		
+            for (int i = 0; i < child_count; i++) {
+#ifdef DEBUG
+    		    cout << "I am here 2.4, start " << new_cells[i].row << " , " << new_cells[i].col << endl;
+                cout.flush();
+#endif
+                find_path(new_cells[i], path, local_path, l);
+#ifdef DEBUG
+    		    cout << "I am here 2.4, end " << new_cells[i].row << " , " << new_cells[i].col << endl;
+                cout.flush();
 #endif
        		 }
 	    }
@@ -242,15 +260,15 @@ int main(int argc, char *argv[]) {
     int sup_idx = 0;
     int start_point;
     int idx;
-    int cur_col, cur_row;
-    int col,row;
     int rankid, width,height;
     int maxwidth = 0, maxrank = 0; // maxcol = 0;
     int l;
     int index = 0; // index for critical path
     int size1; //=path.size();
     int modeltime=0;
-   
+    int col, row;
+    int cur_col,cur_row;
+    
     maxpathlength=0;
     vector<int> supernode(SIZE);
     vector<vector<int>> myrank(SIZE, vector<int>(SIZE));
@@ -259,8 +277,10 @@ int main(int argc, char *argv[]) {
     vector<vector<int>> myblockN(SIZE, vector<int>(SIZE));
     
     //read matrix format: col#, row# 
-    //FILE* fp = fopen("nlpkkt80_256.csv","r");
-    FILE* fp = fopen("tri_1000.csv","r");
+    //FILE* fp = fopen("L_256ranks.csv","r");
+    //FILE* fp = fopen("test.csv","r");
+    char* filename=argv[1];
+    FILE* fp = fopen(filename,"r");
     if (fp == NULL) {
 	    fprintf(stderr, "Error reading file\n");
 	    return 1;
@@ -313,10 +333,15 @@ int main(int argc, char *argv[]) {
     fflush(stdout);
 #endif
     vector<vector<Cell>> path;
-    i=0;
-    Cell start(supernode[i], supernode[i]);
-    vector<Cell> local_path;
-    find_path(start, path, local_path,l);
+    for (i=0; i<sup_idx; i++){
+        Cell start(supernode[i], supernode[i]);
+        vector<Cell> local_path;
+        find_path(start, path, local_path,l);
+    }
+#ifdef DEBUG_1     
+    printf("END find path!!!!");
+    fflush(stdout);
+#endif
 
     /* Process Mapping */
     myrank[0][0]=0; 
@@ -365,150 +390,148 @@ int main(int argc, char *argv[]) {
             find_level(start,l); 
     }
             
-  
-
-    /* count out-degree   diag*/
-    vector<int> sendoutmsg(maxcol+1, 0);
-    vector<int> sendoutmsgTime(maxcol+1, 0);
-    for (i = 0; i <= maxcol; i++) {
-	    j = i+1;
-	    while (j <= maxcol){
-		    if (graph[j][i] == 1 && myrank[j][i] != myrank[i][i]) {
-			    sendoutmsg[i] += 1;
-		    }
-		    j += 1;
-	    }
-    }
-
-    /* count in-degree diag */
-    int recv_rd_diag_rank[maxcol]; 
-    recv_rd_diag_rank[0]=0;
-    for (i = 1; i < maxcol; i++) {
-	    j = 0;
-	    recv_rd_diag_rank[i]=0;
-	    while (j < i){
-		    if (graph[i][j] == 1 && myrank[i][j]!=myrank[i][i]) {
-	            recv_rd_diag_rank[i] += 1;
-		    }
-	        j += 1;
-	    }
-	//cout << "row " << i << ", " <<recv_rd_diag[i] << endl;
-    }
-
-
-    vector<int> lowbound(NPROW*NPCOL, 0);
-    int r, r_new;
-    for (i = 0; i < maxcol; i++) {
-        j = 0;
-        while (j <= i){
-            if (graph[i][j] == 1){ //&& myrank[i][j]!=myrank[i][i]) {
-                r=myrank[i][j];
-                lowbound[r]+= ceil(mywidth[i][j]*myheight[i][j]*8/BW_CORE)+200;
-            } 
-	        j += 1;
-        }
-    }
-    int lowbound_final=0;
-    for (i=0; i<NPROW*NPCOL; i++){
-        if(lowbound[i] > lowbound_final) lowbound_final = lowbound[i];
-    }
-#ifdef DEBUG_1     
-    cout << "Lower Bound = " << lowbound_final << endl;
-    cout.flush();
-#endif   
-
-
-    size1=path[index].size();
-    vector<int> leveltime_0(size1+1, 0);
-    vector<int> depend_diag(size1+1,0); 
-    vector<int> fompi_depend_diag(size1+1,0); 
-    vector<int> fompicounter_depend_diag(size1+1,0); 
-    vector<int> levelsize(size1+1,0); 
-    modeltime=0;
-    int modeltime_0=0;
-    int modelMessagingtime=0;
-    int fompi_modelMessagingtime=0;
-    int fompicounter_modelMessagingtime=0;
-    bool visited;
-    int modelsize=0;
-#ifdef DEBUG_1     
-    cout << "Counting DGEMV time, Printing out dependency block (row,col,level)" << endl; 
-    cout.flush();
-#endif
-    for (i = 0; i < path[index].size(); i++) {
-    	    cur_col=path[index][i].col;
-            cur_row=path[index][i].row;
-            myblockN[cur_row][cur_col]=1;
-	        r=myrank[cur_row][cur_col];
-	        modelsize = max(mywidth[j][l],myheight[j][l]);
-		    modeltime_0 += ceil(modelsize * modelsize * 8 / BW_CORE) + 200;	
-	        if (cur_col==cur_row){
-                if ( NPROW >= 8){
-	    	        modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] *8 / upper_power_of_two(mywidth[cur_row][cur_row] *8)) + log2(NPCOL) * ceil (NETWORK_LAT + myheight[cur_row][cur_row]*8 / upper_power_of_two(myheight[cur_row][cur_row] *8 ));
-	    	        fompi_modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] *8 / fompi_upper_power_of_two(mywidth[cur_row][cur_row] *8)) + log2(NPCOL) * ceil (NETWORK_LAT + myheight[cur_row][cur_row]*8 / fompi_upper_power_of_two(myheight[cur_row][cur_row] *8 ));
-	    	        fompicounter_modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] *8 / fompicounter_upper_power_of_two(mywidth[cur_row][cur_row] *8)) + log2(NPCOL) * ceil (NETWORK_LAT + myheight[cur_row][cur_row]*8 / fompicounter_upper_power_of_two(myheight[cur_row][cur_row] *8 ));
-	            }else{
-	    	        modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] *8/ upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] *8/ upper_power_of_two(myheight[cur_row][cur_row] *8) );
-	    	        fompi_modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] *8/ fompi_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] *8/ fompi_upper_power_of_two(myheight[cur_row][cur_row] *8) );
-	    	        fompicounter_modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] *8/ fompicounter_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] *8/ fompicounter_upper_power_of_two(myheight[cur_row][cur_row] *8) );
-	            } 
-	        }
-            
-            for (j = 0; j <=maxcol; j++){
-		        for (l = 0; l<=maxcol; l++) {
-                    if (myblockN[j][l]==1) continue;
-		            if (graph[j][l] == 1 && mylevel[j][l] == i){
-			            levelsize[i]++;
-                        myblockN[j][i]=1;
-		            }
-		            if (graph[j][l] == 1 && mylevel[j][l] <= i && myrank[j][l] == r ){
-#ifdef DEBUG_1     
-			            cout << "Path 0: " << j << "," << l << "," << r << ","<< i << endl; 
-                        cout.flush();
-#endif
-                        modelsize = max(mywidth[j][l],myheight[j][l]);
-			            modeltime_0 += ceil(modelsize * modelsize * 8 / BW_CORE) + 200;	
-                    }   
-                    if (graph[j][l] == 1 && mylevel[j][l] == i && myrank[j][l] == r && j==l){ 
-	    			        if ( NPROW >= 8){
-					            modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] * 8 / upper_power_of_two(mywidth[cur_row][cur_row] *8) ) +  ceil(log2(NPCOL)) * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8 / upper_power_of_two(myheight[cur_row][cur_row] * 8) );
-					            fompi_modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] * 8 / fompi_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) +  ceil(log2(NPCOL)) * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8 / fompi_upper_power_of_two(myheight[cur_row][cur_row] * 8) );
-					            fompicounter_modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] * 8 / fompicounter_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) +  ceil(log2(NPCOL)) * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8 / fompicounter_upper_power_of_two(myheight[cur_row][cur_row] * 8) );
-				            }else{
-	    				        modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] * 8 / upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8/ upper_power_of_two(myheight[cur_row][cur_row] *8 ));
-	    				        fompi_modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] * 8 / fompi_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8/ fompi_upper_power_of_two(myheight[cur_row][cur_row] *8 ));
-	    				        fompicounter_modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] * 8 / fompicounter_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8/ fompicounter_upper_power_of_two(myheight[cur_row][cur_row] *8 ));
-				            }
-		    	    }
-		        }
-		    }
-	    
-	   leveltime_0[i] = modeltime_0 ; //ceil(mywidth[j][l]*myheight[j][l] * 8 / BW_CORE) + 200;
-	   depend_diag[i] = modelMessagingtime;
-	   fompi_depend_diag[i] = fompi_modelMessagingtime;
-	   fompicounter_depend_diag[i] = fompicounter_modelMessagingtime;
-    }
-	
-	i=index;
-
-#ifdef DEBUG_1     
- // print critial path
-   cout << " Critial path time on each level" << endl;
-   cout.flush();
-   int plevel;
-   index=0;
-   idx=0;
-   while (idx < path[index].size()){
-    	cur_col=path[index][idx].col;
-        cur_row=path[index][idx].row;
-   	    plevel = mylevel[cur_row][cur_col];    
-	    cout << plevel << " , " << myrank[cur_row][cur_col] << " , " << leveltime_0[plevel]/1e3 << " , " << depend_diag[plevel]/1e3 <<" , " << fompi_depend_diag[plevel]/1e3 << " , " << fompicounter_depend_diag[plevel] <<" , " << levelsize[plevel]<< endl; 	
-        cout.flush();
-	    idx += 1;
-  }
-    cout << "level, rank, dgemm,twoside,fompi,fompicounter,levelsize"<< endl;
-    cout.flush();
-#endif  
+//    /* count out-degree   diag*/
+//    vector<int> sendoutmsg(maxcol+1, 0);
+//    vector<int> sendoutmsgTime(maxcol+1, 0);
+//    for (i = 0; i <= maxcol; i++) {
+//	    j = i+1;
+//	    while (j <= maxcol){
+//		    if (graph[j][i] == 1 && myrank[j][i] != myrank[i][i]) {
+//			    sendoutmsg[i] += 1;
+//		    }
+//		    j += 1;
+//	    }
+//    }
+//
+//    /* count in-degree diag */
+//    int recv_rd_diag_rank[maxcol]; 
+//    recv_rd_diag_rank[0]=0;
+//    for (i = 1; i < maxcol; i++) {
+//	    j = 0;
+//	    recv_rd_diag_rank[i]=0;
+//	    while (j < i){
+//		    if (graph[i][j] == 1 && myrank[i][j]!=myrank[i][i]) {
+//	            recv_rd_diag_rank[i] += 1;
+//		    }
+//	        j += 1;
+//	    }
+//	//cout << "row " << i << ", " <<recv_rd_diag[i] << endl;
+//    }
+//
+//
+//    vector<int> lowbound(NPROW*NPCOL, 0);
+//    int r, r_new;
+//    for (i = 0; i < maxcol; i++) {
+//        j = 0;
+//        while (j <= i){
+//            if (graph[i][j] == 1){ //&& myrank[i][j]!=myrank[i][i]) {
+//                r=myrank[i][j];
+//                lowbound[r]+= ceil(mywidth[i][j]*myheight[i][j]*8/BW_CORE)+200;
+//            } 
+//	        j += 1;
+//        }
+//    }
+//    int lowbound_final=0;
+//    for (i=0; i<NPROW*NPCOL; i++){
+//        if(lowbound[i] > lowbound_final) lowbound_final = lowbound[i];
+//    }
+//#ifdef DEBUG_1     
+//    cout << "Lower Bound = " << lowbound_final << endl;
+//    cout.flush();
+//#endif   
+//
+//
+//    size1=path[index].size();
+//    vector<int> leveltime_0(size1+1, 0);
+//    vector<int> depend_diag(size1+1,0); 
+//    vector<int> fompi_depend_diag(size1+1,0); 
+//    vector<int> fompicounter_depend_diag(size1+1,0); 
+//    vector<int> levelsize(size1+1,0); 
+//    modeltime=0;
+//    int modeltime_0=0;
+//    int modelMessagingtime=0;
+//    int fompi_modelMessagingtime=0;
+//    int fompicounter_modelMessagingtime=0;
+//    bool visited;
+//    int modelsize=0;
+//#ifdef DEBUG_1     
+//    cout << "Counting DGEMV time, Printing out dependency block (row,col,level)" << endl; 
+//    cout.flush();
+//#endif
+//    for (i = 0; i < path[index].size(); i++) {
+//    	    cur_col=path[index][i].col;
+//            cur_row=path[index][i].row;
+//            myblockN[cur_row][cur_col]=1;
+//	        r=myrank[cur_row][cur_col];
+//	        modelsize = max(mywidth[j][l],myheight[j][l]);
+//		    modeltime_0 += ceil(modelsize * modelsize * 8 / BW_CORE) + 200;	
+//	        if (cur_col==cur_row){
+//                if ( NPROW >= 8){
+//	    	        modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] *8 / upper_power_of_two(mywidth[cur_row][cur_row] *8)) + log2(NPCOL) * ceil (NETWORK_LAT + myheight[cur_row][cur_row]*8 / upper_power_of_two(myheight[cur_row][cur_row] *8 ));
+//	    	        fompi_modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] *8 / fompi_upper_power_of_two(mywidth[cur_row][cur_row] *8)) + log2(NPCOL) * ceil (NETWORK_LAT + myheight[cur_row][cur_row]*8 / fompi_upper_power_of_two(myheight[cur_row][cur_row] *8 ));
+//	    	        fompicounter_modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] *8 / fompicounter_upper_power_of_two(mywidth[cur_row][cur_row] *8)) + log2(NPCOL) * ceil (NETWORK_LAT + myheight[cur_row][cur_row]*8 / fompicounter_upper_power_of_two(myheight[cur_row][cur_row] *8 ));
+//	            }else{
+//	    	        modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] *8/ upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] *8/ upper_power_of_two(myheight[cur_row][cur_row] *8) );
+//	    	        fompi_modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] *8/ fompi_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] *8/ fompi_upper_power_of_two(myheight[cur_row][cur_row] *8) );
+//	    	        fompicounter_modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] *8/ fompicounter_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] *8/ fompicounter_upper_power_of_two(myheight[cur_row][cur_row] *8) );
+//	            } 
+//	        }
+//            
+//            for (j = 0; j <=maxcol; j++){
+//		        for (l = 0; l<=maxcol; l++) {
+//                    if (myblockN[j][l]==1) continue;
+//		            if (graph[j][l] == 1 && mylevel[j][l] == i){
+//			            levelsize[i]++;
+//                        myblockN[j][i]=1;
+//		            }
+//		            if (graph[j][l] == 1 && mylevel[j][l] <= i && myrank[j][l] == r ){
+//#ifdef DEBUG_1     
+//			            cout << "Path: " << j << "," << l << "," << r << ","<< i << endl; 
+//                        cout.flush();
+//#endif
+//                        modelsize = max(mywidth[j][l],myheight[j][l]);
+//			            modeltime_0 += ceil(modelsize * modelsize * 8 / BW_CORE) + 200;	
+//                    }   
+//                    if (graph[j][l] == 1 && mylevel[j][l] == i && myrank[j][l] == r && j==l){ 
+//	    			        if ( NPROW >= 8){
+//					            modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] * 8 / upper_power_of_two(mywidth[cur_row][cur_row] *8) ) +  ceil(log2(NPCOL)) * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8 / upper_power_of_two(myheight[cur_row][cur_row] * 8) );
+//					            fompi_modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] * 8 / fompi_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) +  ceil(log2(NPCOL)) * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8 / fompi_upper_power_of_two(myheight[cur_row][cur_row] * 8) );
+//					            fompicounter_modelMessagingtime += NETWORK_LAT  + ceil ( log2(NPROW) * mywidth[cur_row][cur_row] * 8 / fompicounter_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) +  ceil(log2(NPCOL)) * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8 / fompicounter_upper_power_of_two(myheight[cur_row][cur_row] * 8) );
+//				            }else{
+//	    				        modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] * 8 / upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8/ upper_power_of_two(myheight[cur_row][cur_row] *8 ));
+//	    				        fompi_modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] * 8 / fompi_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8/ fompi_upper_power_of_two(myheight[cur_row][cur_row] *8 ));
+//	    				        fompicounter_modelMessagingtime += NETWORK_LAT  + ceil ( NPROW * mywidth[cur_row][cur_row] * 8 / fompicounter_upper_power_of_two(mywidth[cur_row][cur_row] *8) ) + NPCOL * ceil (NETWORK_LAT + myheight[cur_row][cur_row] * 8/ fompicounter_upper_power_of_two(myheight[cur_row][cur_row] *8 ));
+//				            }
+//		    	    }
+//		        }
+//		    }
+//	    
+//	   leveltime_0[i] = modeltime_0 ; //ceil(mywidth[j][l]*myheight[j][l] * 8 / BW_CORE) + 200;
+//	   depend_diag[i] = modelMessagingtime;
+//	   fompi_depend_diag[i] = fompi_modelMessagingtime;
+//	   fompicounter_depend_diag[i] = fompicounter_modelMessagingtime;
+//    }
+//	
+//	i=index;
+//
+//#ifdef DEBUG_1     
+// // print critial path
+//   cout << " Critial path time on each level" << endl;
+//   cout.flush();
+//   int plevel;
+//   index=0;
+//   idx=0;
+//   while (idx < path[index].size()){
+//    	cur_col=path[index][idx].col;
+//        cur_row=path[index][idx].row;
+//   	    plevel = mylevel[cur_row][cur_col];    
+//	    cout << plevel << " , " << myrank[cur_row][cur_col] << " , " << leveltime_0[plevel]/1e3 << " , " << depend_diag[plevel]/1e3 <<" , " << fompi_depend_diag[plevel]/1e3 << " , " << fompicounter_depend_diag[plevel] <<" , " << levelsize[plevel]<< endl; 	
+//        cout.flush();
+//	    idx += 1;
+//  }
+//    cout << "level, rank, dgemm,twoside,fompi,fompicounter,levelsize"<< endl;
+//    cout.flush();
+//#endif  
 		
        
 return 0;
