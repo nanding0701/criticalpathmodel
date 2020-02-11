@@ -3,11 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
+#include <unordered_map>
 #include <math.h>
 
 using namespace std;
 
-#define SIZE 30000
 #define BC_TREE_TYPE 0
 #define BW_CORE 6  //6GB/s/core == 6B/ns
 #define NETWORK_LAT 3810 // send 0 Byte
@@ -15,8 +15,8 @@ using namespace std;
 #define NPCOL 2 
 
 //vector<unsigned long int> visited(SIZE, 0);
-vector<vector<bool>> graph(SIZE, vector<bool>(SIZE, 0));
-vector<vector<int>> mylevel(SIZE, vector<int>(SIZE, 0));
+unordered_map<int, unordered_map<int, bool>> graph;
+unordered_map<int, unordered_map<int, int>> mylevel;
 
 int maxcol;
 int maxpathlength;
@@ -37,13 +37,15 @@ struct Cell{
     }
 };
 
-void display(bool a[][SIZE], int count) {
-    for (int i = 0; i < count; i++) {
-        for(int j = 0; j < count; j++) {
-            printf("%d", a[i][j]);
-        }
-        printf("\n");
-    }
+bool exist_in_map(unordered_map<int, unordered_map<int, bool>>& hash_map, int row, int col) {
+    auto  row_it = hash_map.find(row);
+    if (row_it == hash_map.end())
+        return false;
+    auto col_it = row_it->second.find(col);
+    if (col_it == row_it->second.end())
+        return false;
+
+    return true;
 }
 
 void find_level(Cell point, int l) {
@@ -94,18 +96,12 @@ void find_path(Cell point, vector<vector<Cell>>& path, vector<Cell> local_path, 
     local_path.push_back(point);
     l += 1;	
     if (point.col >= maxcol && point.col == point.row) {
-#ifdef DEBUG
-        cout << "find a path, size = " << local_path.size() << " current max = "<< maxpathlength << " current total path num = " <<  path.size() <<endl;
-        cout.flush();
-#endif
         if (maxpathlength < local_path.size()) {
             path.push_back(local_path);
             maxpathlength = local_path.size();
-#ifdef DEBUG
-            for (auto cell : local_path) {
-                cell.display();
-            }
-            cout << endl;
+#ifdef DEBUG_2
+        cout << "find a path, size = " << local_path.size() << " current max = "<< maxpathlength << " current total path num = " <<  path.size() <<endl;
+        cout.flush();
 #endif
         }else{
             local_path.clear();
@@ -115,8 +111,7 @@ void find_path(Cell point, vector<vector<Cell>>& path, vector<Cell> local_path, 
     }
         int cur_col = point.col;
         int row_end = point.row;
-        int child_count = 0;
-        vector<Cell> new_cells(SIZE);
+        vector<Cell> new_cells;
         
         if (point.row == point.col) {
             row_end += 1;
@@ -124,45 +119,42 @@ void find_path(Cell point, vector<vector<Cell>>& path, vector<Cell> local_path, 
             cout << "I am here 2.1, this point row_end = " << row_end << endl;
             cout.flush();
 #endif
-		    while (row_end <= maxcol){
-                if (graph[row_end][cur_col] == 1) {
-                	if (mylevel[row_end][cur_col] < l){
+		    while (row_end <= maxcol) {
+                if (exist_in_map(graph, row_end, cur_col)) {
+                    int cur_level = mylevel[row_end][cur_col];
+                    if (cur_level < l) {
                         mylevel[row_end][cur_col] = l;
-	        	        new_cells[child_count].row = row_end;
-                	    new_cells[child_count].col = cur_col;
-                	    child_count++;
+                        new_cells.emplace_back(cur_col, row_end);
 #ifdef DEBUG
             	        cout << "I am here 2.2, this point (" << point.row << ") find children (row col) = (" << row_end << "," << cur_col << ")" << endl;
                         cout.flush();
 #endif
-				    }
+                    } else {
+#ifdef DEBUG_2
+                        cout << "omit  a child" << endl;
+#endif
+                    }
                 }
             	row_end++;
        		}
 #ifdef DEBUG
-    		cout << "I am here 2.3, this point (" << point.row << ") find children total = " << child_count << endl;
+    		cout << "I am here 2.3, this point (" << point.row << ") find children total = " << new_cells.size() << endl;
             cout.flush();
 #endif
-            if (child_count == 0) {
-#ifdef DEBUG
-                cout << "find a path, size = " << local_path.size() << " current max = "<< maxpathlength << " current total path num = " <<  path.size() <<endl;
-                cout.flush();
-#endif
+            if (new_cells.size() == 0) {
                 if (maxpathlength < local_path.size()) {
                     path.push_back(local_path);
                     maxpathlength = local_path.size();
-#ifdef DEBUG
-                    for (auto cell : local_path) {
-                        cell.display();
-                    }
-                    cout << endl;
+#ifdef DEBUG_2
+                cout << "find a path, size = " << local_path.size() << " current max = "<< maxpathlength << " current total path num = " <<  path.size() <<endl;
+                cout.flush();
 #endif
-                }else{
+                } else {
                     local_path.clear();
                 }
             }
     		
-            for (int i = 0; i < child_count; i++) {
+            for (int i = 0; i < new_cells.size(); i++) {
 #ifdef DEBUG
     		    cout << "I am here 2.4, start " << new_cells[i].row << " , " << new_cells[i].col << endl;
                 cout.flush();
@@ -178,21 +170,22 @@ void find_path(Cell point, vector<vector<Cell>>& path, vector<Cell> local_path, 
     
    if (point.col < point.row) {
 #ifdef DEBUG
-    	cout << "I am here 2.5, this point = (" << point.col << " , " << point.row << " ), level = " << mylevel[point.row][point.row] <<endl;
-        cout.flush();
+       cout << "I am here 2.5, this point = (" << point.col << " , " << point.row << " ), level = " << mylevel[point.row][point.row] <<endl;
+       cout.flush();
 #endif
        Cell new_point(point.row, point.row);
-       if (mylevel[point.row][point.row] < l){
-	        mylevel[point.row][point.row] = l;
+       if (mylevel[point.row][point.row] < l) {
+           mylevel[point.row].erase(point.row);
+           mylevel[point.row][point.row] = l;
        }
 #ifdef DEBUG
-    		cout << "I am here 2.6, start " << point.row << " , " << point.row << endl;
-            cout.flush();
+       cout << "I am here 2.6, start " << point.row << " , " << point.row << endl;
+       cout.flush();
 #endif
        find_path(new_point, path, local_path, l);
 #ifdef DEBUG
-    		cout << "I am here 2.6, end " << point.row << " , " << point.row << endl;
-            cout.flush();
+       cout << "I am here 2.6, end " << point.row << " , " << point.row << endl;
+       cout.flush();
 #endif
     }
 #ifdef DEBUG
@@ -270,11 +263,11 @@ int main(int argc, char *argv[]) {
     int cur_col,cur_row;
     
     maxpathlength=0;
-    vector<int> supernode(SIZE);
-    vector<vector<int>> myrank(SIZE, vector<int>(SIZE));
-    vector<vector<int>> mywidth(SIZE, vector<int>(SIZE));
-    vector<vector<int>> myheight(SIZE, vector<int>(SIZE));
-    vector<vector<int>> myblockN(SIZE, vector<int>(SIZE));
+    vector<int> supernode;
+    unordered_map<int, unordered_map<int, int>> myrank;
+    unordered_map<int, unordered_map<int, int>> mywidth;
+    unordered_map<int, unordered_map<int, int>> myheight;
+    unordered_map<int, unordered_map<int, int>> myblockN;
     
     //read matrix format: col#, row# 
     //FILE* fp = fopen("L_256ranks.csv","r");
@@ -292,6 +285,7 @@ int main(int argc, char *argv[]) {
     count = 0;
     while (fscanf(fp, "%d,%d,%d,%d,%d", &col, &row, &rankid,&width,&height ) == 5) {
         graph[row][col] = 1;
+        mylevel[row][col] = 0;
         //myrank[row][col] = rankid;
         mywidth[row][col] = width;
 	    myheight[row][col] = height; 
@@ -307,7 +301,7 @@ int main(int argc, char *argv[]) {
     fflush(stdout);
 #endif    
 
-    supernode[0] = 0;
+    supernode.push_back(0);
     mylevel[0][0] = 0;
     sup_idx = 1;
     l=0;
@@ -315,11 +309,11 @@ int main(int argc, char *argv[]) {
     for (i = 1; i <= maxcol; i++) {
 	    j = i - 1;
 	    while (j >= 0) {
-		    if (graph[i][j] == 1) {
+		    if (exist_in_map(graph, i, j)) {
 			    break;
 		    } else {
 			    if (j == 0) {
-				    supernode[sup_idx] = i;
+				    supernode.push_back(i);
 				    sup_idx++;
 				    mylevel[i][i]=l;
 			    }
@@ -333,10 +327,10 @@ int main(int argc, char *argv[]) {
     fflush(stdout);
 #endif
     vector<vector<Cell>> path;
-    for (i=0; i<sup_idx; i++){
-        Cell start(supernode[i], supernode[i]);
+    for (auto super_index : supernode) {
+        Cell start(super_index, super_index);
         vector<Cell> local_path;
-        find_path(start, path, local_path,l);
+        find_path(start, path, local_path, l);
     }
 #ifdef DEBUG_1     
     printf("END find path!!!!");
