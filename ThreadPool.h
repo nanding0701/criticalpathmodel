@@ -21,7 +21,27 @@ public:
     auto enqueue(F&& f, Args&&... args)
     -> std::future<typename std::result_of<F(Args...)>::type>;
     ~ThreadPool();
-    int waiting_task_count() { return tasks.size();};
+
+    uint64_t waiting_task_count() {
+        queue_mutex.lock();
+        uint64_t waiting_count = tasks.size();
+        queue_mutex.unlock();
+        return waiting_count;
+    }
+
+    uint64_t get_finish_tasks() {
+        task_mutex.lock();
+        uint64_t finish_task_count = finish_tasks.load();
+        task_mutex.unlock();
+        return finish_task_count;
+    }
+
+    void reset_finish_task() {
+        task_mutex.lock();
+        finish_tasks = 0;
+        task_mutex.unlock();
+    }
+
 private:
     // need to keep track of threads so we can join them
     std::vector< std::thread > workers;
@@ -32,6 +52,10 @@ private:
     std::mutex queue_mutex;
     std::condition_variable condition;
     bool stop;
+
+    // the number of finished task
+    std::mutex task_mutex;
+    std::atomic<uint64_t> finish_tasks{0};
 };
 
 // the constructor just launches some amount of workers
@@ -55,8 +79,12 @@ inline ThreadPool::ThreadPool(size_t threads)
                             task = std::move(this->tasks.front());
                             this->tasks.pop();
                         }
-
                         task();
+                        if (task != NULL) {
+                            task_mutex.lock();
+                            finish_tasks++;
+                            task_mutex.unlock();
+                        }
                     }
                 }
         );
