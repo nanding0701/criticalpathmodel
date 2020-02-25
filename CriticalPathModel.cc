@@ -18,7 +18,7 @@ using namespace std;
 #define BW_CORE 6  //6GB/s/core == 6B/ns
 #define LAT_CORE 200
 //#define NETWORK_LAT 3810 // send 0 Byte ns
-#define NUM_OF_THREADS 8 // The number of threads to find critical path
+#define NUM_OF_THREADS 256 // The number of threads to find critical path
                          // One thread per core
 unordered_map<int, unordered_map<int, bool>> graph;
 unordered_map<int, unordered_map<int, int>> mylevel;
@@ -190,6 +190,52 @@ void find_path(Cell point, vector<Cell> local_path, int l) {
     return;
 }
 
+
+void find_level(Cell point, int l) {
+    l += 1;
+
+    if (point.col >= maxcol && point.col == point.row) {
+        if (mylevel[point.col][point.col] < l){
+            mylevelMutexs[point.col][point.col]->lock();
+            mylevel[point.col][point.col] = l;
+            mylevelMutexs[point.col][point.col]->unlock();
+        }
+        return;
+    }
+
+
+    int cur_col = point.col;
+    int row_end = point.row;
+
+    if (point.row == point.col) {
+        row_end += 1;
+        while (row_end <= maxcol){
+            if (exist_in_map(graph, row_end, cur_col)){
+                mylevelMutexs[row_end][cur_col]->lock();
+                if (mylevel[row_end][cur_col] < l){
+                    mylevel[row_end][cur_col] = l;
+                }
+                mylevelMutexs[row_end][cur_col]->unlock();
+                Cell new_point(row_end, cur_col);
+                find_level(new_point, l);
+            }
+            row_end++;
+        }
+    }
+
+
+    if (point.row > point.col) {
+        mylevelMutexs[point.row][cur_col]->lock();
+        if (mylevel[point.row][cur_col] < l){
+            mylevel[point.row][cur_col] = l;
+        }
+        mylevelMutexs[point.row][cur_col]->unlock();
+        Cell new_point(point.row, point.row);
+        find_level(new_point, l);
+    }
+    return;
+}
+
 vector<int> supernode;
 void find_supernode(int i) {
     int j = i - 1;
@@ -224,66 +270,44 @@ void find_rank(int i){
 double upper_power_of_two(int v){
     double network_bw[8]={0.000781,0.001584,0.003218,0.006309,0.011856,0.023702,0.043877,0.079943};  //,6821.06,7441.23,7754.30,7931.55,8019.80,8074.51,8097.14,8079.97};
     // msgsize=8,16,32,64,128,256,512,1024
-
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++;
-
-    //cout << v <<"," << log(v) << network_bw[(int)log2(v)]  << endl<< std::flush;
-    return network_bw[(int)log2(v)-1]/1e3;
+    double v_new;
+    //v--;
+    //v |= v >> 1;
+    //v |= v >> 2;
+    //v |= v >> 4;
+    //v |= v >> 8;
+    //v |= v >> 16;
+    //v++;
+    v_new=pow(2, ceil(log(v)/log(2)));
+    //cout << v <<"," << v_new << "," << log2(v_new) << ","<< network_bw[(int)log2(v_new)]  << endl;
+    //cout.flush();
+    return network_bw[(int)log2(v_new)];
     //return v;
 }
 double fompiput_upper_power_of_two(int v)
 {
     double fompi[8]={0.008372,0.013127,0.023722,0.046906,0.079897,0.089148,0.147553,0.220758};
     //double fompi[15]={5.19148,10.0762,21.0765,39.6508,83.754,149.342,279.648,414.555,881.995,1281.71,1736.03,2231.95,2430.68,2869.23,6234.01}; //haswell
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++;
-
-    //cout << v <<"," << log(v) << network_bw[(int)log2(v)]  << endl<< std::flush;
-    return fompi[(int)log2(v)-1]/1e3;
-    //return v;
+    double v_new;
+    v_new=pow(2, ceil(log(v)/log(2)));
+    return fompi[(int)log2(v_new)];
 }
 double fompiget_upper_power_of_two(int v)
 {
     double fompi[8]={0.002138,0.004301,0.008740,0.017280,0.030868,0.055044,0.064966,0.058826};
     //double fompi[15]={5.19148,10.0762,21.0765,39.6508,83.754,149.342,279.648,414.555,881.995,1281.71,1736.03,2231.95,2430.68,2869.23,6234.01}; //haswell
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++;
-
-    //cout << v <<"," << log(v) << network_bw[(int)log2(v)]  << endl<< std::flush;
-    return fompi[(int)log2(v)-1]/1e3;
+    double v_new;
+    v_new=pow(2, ceil(log(v)/log(2)));
+    return fompi[(int)log2(v_new)];
     //return v;
 }
 double fompicounter_upper_power_of_two(int v)
 {
     double fompi_counter[15]={0.415952,0.728321,1.60955,3.11724,5.76481,12.0821,22.6828,49.2828,89.8562,165.587,335.04,674.643,1497.37,1993.54,2061.98};
     //double fompi_counter[15]={0.895065,1.58806,2.79401,6.21149,13.6465,26.819,47.7808,101.066,193.221,379.592,444.028,701.86,1421.58,2382.34,3986.8}; //haswell
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++;
-
-    //cout << v <<"," << log(v) << network_bw[(int)log2(v)]  << endl<< std::flush;
-    return fompi_counter[(int)log2(v)-1]/1e3;
-    //return v;
+    double v_new;
+    v_new=pow(2, ceil(log(v)/log(2)));
+    return fompi_counter[(int)log2(v_new)];
 }
 double model_message_time(int commu_type, int implement_type, int mywidth, int myheight, int msgcnt){
 /* model_message_time (int BC=0/RD=1), int twoside=0/fompiput=1/fompiget=2/nvshmemget=3, int mywidth, int myheight, int messagecnt)*/
@@ -294,33 +318,35 @@ double model_message_time(int commu_type, int implement_type, int mywidth, int m
     switch (implement_type) {
         case 0:
             NETWORK_LAT=18695.933024;
-            myBW_bc = upper_power_of_two(mywidth * 8);
-            myBW_rd = upper_power_of_two(myheight * 8);
+            myBW_bc = upper_power_of_two(mywidth);
+            myBW_rd = upper_power_of_two(myheight);
             break;
         case 1:
             NETWORK_LAT=19.981066;
-            myBW_bc = fompiput_upper_power_of_two(mywidth * 8);
-            myBW_rd = fompiput_upper_power_of_two(myheight * 8);
+            myBW_bc = fompiput_upper_power_of_two(mywidth);
+            myBW_rd = fompiput_upper_power_of_two(myheight);
             break;
         case 2:
             NETWORK_LAT=25.440852;
-            myBW_bc = fompiget_upper_power_of_two(mywidth * 8);
-            myBW_rd = fompiget_upper_power_of_two(myheight * 8);
+            myBW_bc = fompiget_upper_power_of_two(mywidth);
+            myBW_rd = fompiget_upper_power_of_two(myheight);
             break;
     }
 
 
 
     switch(commu_type) {
+        if (msgcnt==0) return 0;
         case 0:
+            if (msgcnt==0) return 0;
             if (NPROW >= 8) {
-                time += NETWORK_LAT + ceil(log2(msgcnt) * mywidth * 8 / myBW_bc);
+                time = NETWORK_LAT + ceil(log2(msgcnt)) * mywidth * 8 / myBW_bc;
 #ifdef DEBUG_2
-                cout << "(NPROW>=8) time=" << time << endl;
+                cout << "(NPROW>=8) time=" << time/1e9  << ",msgcnt=" << msgcnt << "/" << log2(msgcnt)<< endl;
                 cout.flush();
 #endif
             } else {
-                time += NETWORK_LAT + ceil(msgcnt * mywidth * 8 / myBW_bc);
+                time = NETWORK_LAT + ceil(msgcnt * mywidth * 8 / myBW_bc);
 #ifdef DEBUG_2
                 cout << "(NPROW<8) time=" << time << endl;
                 cout.flush();
@@ -328,14 +354,15 @@ double model_message_time(int commu_type, int implement_type, int mywidth, int m
             }
             break;
         case 1:
+            if (msgcnt==0) return 0;
             if (NPCOL >= 8) {
-                time += log2(msgcnt) * ceil( NETWORK_LAT +  myheight * 8 / myBW_rd);
+                time = ceil(log2(msgcnt)) *  NETWORK_LAT +  myheight * 8 / myBW_rd;
 #ifdef DEBUG_2
-                cout << "(NPCOL>=8) time=" << time << endl;
+                cout << "(NPCOL>=8) time=" << time/1e9 << ",msgcnt=" << msgcnt << "/" << log2(msgcnt)<< endl;
                 cout.flush();
 #endif
             } else {
-                time += msgcnt * ceil(NETWORK_LAT + myheight * 8 / myBW_rd);
+                time = msgcnt * ceil(NETWORK_LAT + myheight * 8 / myBW_rd);
 #ifdef DEBUG_2
                 cout << "(NPCOL<8) time=" << time << endl;
                 cout.flush();
@@ -345,13 +372,14 @@ double model_message_time(int commu_type, int implement_type, int mywidth, int m
 
     }
 
-    return time;
+    return time/1e9;
 }
 
 
 
+vector<double> lowbound_p;
 vector<double> lowbound;
-vector<std::unique_ptr<std::mutex>> lowboundMutexs;
+//vector<int,vector<std::unique_ptr<std::mutex>>> lowboundMutexs;
 unordered_map<int, unordered_set<int>> levelranknum;
 void count_lowerbound(int i) {
     int j = 0, l = 0, r = 0;
@@ -359,16 +387,32 @@ void count_lowerbound(int i) {
         if (exist_in_map(graph, i, j)) {
             l = mylevel[i][j];
             r = myrank[i][j];
-            lowboundMutexs[l]->lock();
+            //lowboundMutexs[l][r]->lock();
             levelranknum[l].insert(r);
             //cout << "lower bound computing" << endl;
             lowbound[l] += ((mywidth[i][j] > myheight[i][j] ? mywidth[i][j] : myheight[i][j])
                             * mywidth[i][j] * 8 / BW_CORE) + LAT_CORE;
             //cout << "lower bound compute done" << endl;
-            lowboundMutexs[l]->unlock();
+            //lowboundMutexs[l][r]->unlock();
         }
         j++;
     }
+}
+
+
+void count_lowerbound_p(int i){
+    int j = 0, l = 0, r = 0;
+    while (j <= i) {
+        if (exist_in_map(graph, i, j)) {
+            r = myrank[i][j];
+            //cout << "lower bound computing" << endl;
+            lowbound_p[r] += ((mywidth[i][j] > myheight[i][j] ? mywidth[i][j] : myheight[i][j])
+                            * mywidth[i][j] * 8 / BW_CORE) + LAT_CORE;
+            //cout << "lower bound compute done" << endl;
+        }
+        j++;
+    }
+
 }
 
 vector<vector<double>> leveltotbytes;
@@ -490,6 +534,23 @@ int main(int argc, char *argv[]) {
     cout.flush();
 #endif
 
+#ifdef DEBUG_0
+    cout << "Counting levels" << endl;
+    cout.flush();
+#endif
+    for (auto super_index : supernode) {
+        l=0;
+        Cell start(super_index, super_index);
+        pool.enqueue(&find_level, start, l);
+    }
+
+    wait_pool_finish(pool, "Finding Levels", supernode.size());
+
+#ifdef DEBUG_0
+    cout << "All levels finished" << endl;
+    cout.flush();
+#endif
+
 
 #ifdef DEBUG_0
     printf("Process Decomposition....\n");
@@ -548,26 +609,49 @@ int main(int argc, char *argv[]) {
 #endif
 
 /* LOWER BOUND */
-    for(i = 0; i < path[index].size(); i++){
-        lowbound.push_back(0);
-        lowboundMutexs.push_back(nullptr);
-        lowboundMutexs[i] = std::make_unique<std::mutex>();
-    }
+    //for(i = 0; i < path[index].size(); i++){
+    //    for (j = 0; j < NPROW*NPCOL; j++) {
+    //        lowboundMutexs.push_back(nullptr);
+    //        lowboundMutexs[i][j] = std::make_unique<std::mutex>();
 
+    //    }
+    //}
+    lowbound_p.resize(NPCOL*NPROW, 0);
+
+    //cout << "init lowbound_p" << endl;
+    size1=path[index].size();
+    lowbound.resize(size1,0);
+    //cout << "init lowbound" << endl;
+
+    for (i = 0; i <= maxcol; i++) {
+        count_lowerbound_p(i);
+        //pool.enqueue(&count_lowerbound, i);
+    }
     for (i = 0; i <= maxcol; i++) {
         count_lowerbound(i);
         //pool.enqueue(&count_lowerbound, i);
     }
 
+#ifdef DEBUG_0
+    cout << "Wait for Counting LOWER BOUND" << endl;
+    cout.flush();
+#endif
     //wait_pool_finish(pool, "Counting Lowerbound", maxcol + 1);
-
+    double tmp_max_1=0;
     double lowbound_final=0;
     for (i=0; i<path[index].size(); i++){
         //cout << "level:" << i << ", ranknum:" << levelranknum[i].size() <<  ", level time:" << lowbound[i] <<endl;
-        lowbound_final += lowbound[i]/levelranknum[i].size();
+        //tmp_max_1 = 0;
+        //for (j=0; j<NPROW*NPCOL; j++) {
+        //    if(lowbound[i][j]> tmp_max_1) tmp_max_1=lowbound[i][j];
+        //}
+        lowbound_final += ceil(lowbound[i]/levelranknum[i].size());
+    }
+    double lowbound_final_p=0;
+    for (j=0; j<NPROW*NPCOL; j++) {
+        if(lowbound_p[i]>lowbound_final_p ) lowbound_final_p=lowbound_p[i];
     }
 
-    size1=path[index].size();
     vector<double> levelGEMMtime(size1, 0);
     vector<int> levelGEMMrank(size1, 0);
 
@@ -587,7 +671,7 @@ int main(int argc, char *argv[]) {
         pool.enqueue(&count_levelGEMM, i);
     }
 
-    wait_pool_finish(pool, "Counting Level", maxcol + 1);
+    wait_pool_finish(pool, "Counting Level GEMM", maxcol + 1);
 
     int tmp_max;
     for(i=0;i<size1;i++){
@@ -610,18 +694,12 @@ int main(int argc, char *argv[]) {
     /* count out-degree   diag*/
     vector<int> sendoutmsg(maxcol, 0);
     int rootrank=0;
-    int tmp_child=0;
     for (i = 0; i <= maxcol; i++) {
         j = i+1;
         rootrank=myrank[i][i];
         while (j <= maxcol){
             if (graph[j][i] == 1 && myrank[j][i] != rootrank) {
-                sendoutmsg[i] += TREE_TYPE;
-                tmp_child += 1;
-            }
-            if (tmp_child >= TREE_TYPE){
-                rootrank = myrank[j][i];
-                tmp_child = 0;
+                sendoutmsg[i] += 1;
             }
             j += 1;
         }
@@ -629,18 +707,12 @@ int main(int argc, char *argv[]) {
     /* count in-degree diag */
     vector<int> recvmsg(maxcol, 0);
     rootrank=0;
-    tmp_child=0;
     for (i = 1; i < maxcol; i++) {
         j = 0;
         rootrank=myrank[i][i];
         while (j < i){
             if (graph[i][j] == 1 && myrank[i][j]!= rootrank) {
-                recvmsg[i] += TREE_TYPE;
-                tmp_child += 1;
-            }
-            if (tmp_child >= TREE_TYPE){
-                rootrank = myrank[j][i];
-                tmp_child = 0;
+                recvmsg[i] += 1;
             }
             j += 1;
         }
@@ -655,14 +727,16 @@ int main(int argc, char *argv[]) {
 
     for (j = 0; j < maxcol; j++) {
         /* model_message_time (int BC=0/RD=1), int twoside=0/fompiput=1/fompiget=2/nvshmemget=3, int mywidth, int myheight, int messagecnt)*/
-        levelBCcommuTime_twoside[mylevel[j][j]] += model_message_time(0,0,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
-        levelRDcommuTime_twoside[mylevel[j][j]] += model_message_time(1,0,mywidth[j][j],myheight[j][j],recvmsg[j]);
+        levelBCcommuTime_twoside[mylevel[j][j]] += model_message_time(0,0,mywidth[j][j],myheight[j][j],NPROW);
+        levelRDcommuTime_twoside[mylevel[j][j]] += model_message_time(1,0,mywidth[j][j],myheight[j][j],NPCOL);
 
-        levelBCcommuTime_fompiput[mylevel[j][j]] += model_message_time(0,1,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
-        levelRDcommuTime_fompiput[mylevel[j][j]] += model_message_time(1,1,mywidth[j][j],myheight[j][j],recvmsg[j]);
+        //cout << "levelRDcommuTime_twoside (" << mylevel[j][j] << ")" << levelRDcommuTime_twoside[mylevel[j][j]] << endl;
+        //cout.flush();
+        levelBCcommuTime_fompiput[mylevel[j][j]] += model_message_time(0,1,mywidth[j][j],myheight[j][j],NPROW);
+        levelRDcommuTime_fompiput[mylevel[j][j]] += model_message_time(1,1,mywidth[j][j],myheight[j][j],NPCOL);
 
-        levelBCcommuTime_fompiget[mylevel[j][j]] += model_message_time(0,2,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
-        levelRDcommuTime_fompiget[mylevel[j][j]] += model_message_time(1,2,mywidth[j][j],myheight[j][j],recvmsg[j]);
+        levelBCcommuTime_fompiget[mylevel[j][j]] += model_message_time(0,2,mywidth[j][j],myheight[j][j],NPROW);
+        levelRDcommuTime_fompiget[mylevel[j][j]] += model_message_time(1,2,mywidth[j][j],myheight[j][j],NPCOL);
 
     }
 
@@ -678,7 +752,7 @@ int main(int argc, char *argv[]) {
  // print critial path
 
     cout << "Critial path (" << path[index].size() << ") time on each level" << endl;
-    cout << "level, rank, size, GEMMtime(ns), Towsided(s),fompiput(s), fompiget(s)"<< endl;
+    cout << "level, rank, size,  Towsided(s),fompiput(s), fompiget(s)"<< endl;
     cout.flush();
 #endif
     while (idx < path[index].size()){
@@ -688,17 +762,17 @@ int main(int argc, char *argv[]) {
         totalCommuTime_fompiget += levelBCcommuTime_fompiget[idx] + levelRDcommuTime_fompiget[idx];
 
 #ifdef DEBUG_0
-	    cout <<  idx  << " , " << levelGEMMrank[idx] << " , " << levelranknum[idx].size() << " , "  << totalGEMMtime/1e9 << " , " << totalCommuTime_twoside/1e9 <<" , " << totalCommuTime_fompiput/1e9 << " , " << totalCommuTime_fompiget/1e9 << endl;
+	    cout <<  idx  << " , " << levelGEMMrank[idx] << " , " << levelranknum[idx].size() << " , "   << totalCommuTime_twoside <<" , " << totalCommuTime_fompiput << " , " << totalCommuTime_fompiget << endl;
         cout.flush();
 #endif
 	    idx += 1;
     }
 #ifdef DEBUG_0
-   cout << "level, rank, size, GEMMtime(s), Towsided(s),fompiput(s), fompiget(s)"<< endl;
+   cout << "level, rank, size, GEMMtime(s), Twosided(s),fompiput(s), fompiget(s)"<< endl;
    cout << "Lower Bound (s) = " << lowbound_final/1e9 << endl;
    cout.flush();
 #endif
-    cout << "lowbound(ns): " << lowbound_final << ", (s): " << lowbound_final/1e9 << ", real(ns): " << totalGEMMtime << endl;
+    cout << "lowbound(ns): " << lowbound_final/1e9 << ", p_max: " << lowbound_final_p/1e9 << ", upper(ns): " << totalGEMMtime/1e9 << endl;
     cout.flush();
 		
        
