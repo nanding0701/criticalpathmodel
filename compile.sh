@@ -14,7 +14,7 @@ fi
 #do
 ##./multithread_CriticalPathModel s1_16x16.csv 16 16
 ###./clean_CriticalPathModel test.csv 2 2
-./clean_CriticalPathModel s1_16X16.csv 16 16
+#./clean_CriticalPathModel s1_16X16.csv 16 16
 #done
 #./clean_CriticalPathModel L_64ranks.csv 16 16  >> test.log
 

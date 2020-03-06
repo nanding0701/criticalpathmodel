@@ -18,7 +18,7 @@ using namespace std;
 #define BW_CORE 6  //6GB/s/core == 6B/ns
 #define LAT_CORE 200
 //#define NETWORK_LAT 3810 // send 0 Byte ns
-#define NUM_OF_THREADS 256 // The number of threads to find critical path
+#define NUM_OF_THREADS 8 // The number of threads to find critical path
                          // One thread per core
 unordered_map<int, unordered_map<int, bool>> graph;
 unordered_map<int, unordered_map<int, int>> mylevel;
@@ -469,6 +469,7 @@ int main(int argc, char *argv[]) {
 	    return 1;
     }
 #ifdef DEBUG_0
+    printf("NPROW=%d, NPCOL=%d\n",NPROW,NPCOL);
     printf("Reading the file\n");
     fflush(stdout);
 #endif
