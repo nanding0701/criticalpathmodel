@@ -267,26 +267,19 @@ void find_rank(int i){
         j++;
     }
 }
+
 double upper_power_of_two(int v){
-    double network_bw[8]={0.000781,0.001584,0.003218,0.006309,0.011856,0.023702,0.043877,0.079943};  //,6821.06,7441.23,7754.30,7931.55,8019.80,8074.51,8097.14,8079.97};
+    //two-sided, 4node, roundtrip pingpong measurement, r/2 = one way bandwidth. on CORI KNL
+    double network_bw[8]={0.020508, 0.033184 , 0.062388, 0.11532, 0.242152 ,0.651056, 1.078736, 1.677228};
     // msgsize=8,16,32,64,128,256,512,1024
     double v_new;
-    //v--;
-    //v |= v >> 1;
-    //v |= v >> 2;
-    //v |= v >> 4;
-    //v |= v >> 8;
-    //v |= v >> 16;
-    //v++;
     v_new=pow(2, ceil(log(v)/log(2)));
-    //cout << v <<"," << v_new << "," << log2(v_new) << ","<< network_bw[(int)log2(v_new)]  << endl;
-    //cout.flush();
     return network_bw[(int)log2(v_new)];
-    //return v;
 }
 double fompiput_upper_power_of_two(int v)
 {
-    double fompi[8]={0.008372,0.013127,0.023722,0.046906,0.079897,0.089148,0.147553,0.220758};
+    //one-sided, fompi_put, 4node, on CORI KNL
+    double fompi[8]={0.032165,0.040741,0.080295,0.165825,0.32415,0.963243,2.466354, 5.875487};
     //double fompi[15]={5.19148,10.0762,21.0765,39.6508,83.754,149.342,279.648,414.555,881.995,1281.71,1736.03,2231.95,2430.68,2869.23,6234.01}; //haswell
     double v_new;
     v_new=pow(2, ceil(log(v)/log(2)));
@@ -294,7 +287,8 @@ double fompiput_upper_power_of_two(int v)
 }
 double fompiget_upper_power_of_two(int v)
 {
-    double fompi[8]={0.002138,0.004301,0.008740,0.017280,0.030868,0.055044,0.064966,0.058826};
+    //one-sided, fompi_put and fompi_get, mimic two-sided, 4node, on CORI KNL
+    double fompi[8]={0.023657,0.040374,0.076177,0.137730,0.230902,0.444637,0.829184, 1.23984};
     //double fompi[15]={5.19148,10.0762,21.0765,39.6508,83.754,149.342,279.648,414.555,881.995,1281.71,1736.03,2231.95,2430.68,2869.23,6234.01}; //haswell
     double v_new;
     v_new=pow(2, ceil(log(v)/log(2)));
@@ -317,17 +311,17 @@ double model_message_time(int commu_type, int implement_type, int mywidth, int m
     double NETWORK_LAT;
     switch (implement_type) {
         case 0:
-            NETWORK_LAT=18695.933024;
+            NETWORK_LAT=11050.575972/1e9;
             myBW_bc = upper_power_of_two(mywidth);
             myBW_rd = upper_power_of_two(myheight);
             break;
         case 1:
-            NETWORK_LAT=19.981066;
+            NETWORK_LAT=481.557846/1e9;
             myBW_bc = fompiput_upper_power_of_two(mywidth);
             myBW_rd = fompiput_upper_power_of_two(myheight);
             break;
         case 2:
-            NETWORK_LAT=25.440852;
+            NETWORK_LAT=502.324104/1e9;
             myBW_bc = fompiget_upper_power_of_two(mywidth);
             myBW_rd = fompiget_upper_power_of_two(myheight);
             break;
@@ -345,7 +339,7 @@ double model_message_time(int commu_type, int implement_type, int mywidth, int m
                 cout << "(NPROW>=8) time=" << time/1e9  << ",msgcnt=" << msgcnt << "/" << log2(msgcnt)<< endl;
                 cout.flush();
 #endif
-            } else {
+            }else{
                 time = NETWORK_LAT + ceil(msgcnt * mywidth * 8 / myBW_bc);
 #ifdef DEBUG_2
                 cout << "(NPROW<8) time=" << time << endl;
@@ -694,12 +688,19 @@ int main(int argc, char *argv[]) {
     /* count out-degree   diag*/
     vector<int> sendoutmsg(maxcol, 0);
     int rootrank=0;
+    int childnum=0;
     for (i = 0; i <= maxcol; i++) {
         j = i+1;
         rootrank=myrank[i][i];
         while (j <= maxcol){
             if (graph[j][i] == 1 && myrank[j][i] != rootrank) {
                 sendoutmsg[i] += 1;
+                //if (childnum <= 2) {
+                //    childnum += 1;
+                //}else{
+                //    childnum=0;
+                //    rootrank = myrank[j][i];
+                //}
             }
             j += 1;
         }
@@ -707,12 +708,19 @@ int main(int argc, char *argv[]) {
     /* count in-degree diag */
     vector<int> recvmsg(maxcol, 0);
     rootrank=0;
+    childnum=0;
     for (i = 1; i < maxcol; i++) {
         j = 0;
         rootrank=myrank[i][i];
         while (j < i){
             if (graph[i][j] == 1 && myrank[i][j]!= rootrank) {
                 recvmsg[i] += 1;
+                //if (childnum <= 2) {
+                //    childnum += 1;
+                //}else{
+                //    childnum=0;
+                //    rootrank = myrank[i][j];
+                //}
             }
             j += 1;
         }
@@ -727,16 +735,18 @@ int main(int argc, char *argv[]) {
 
     for (j = 0; j < maxcol; j++) {
         /* model_message_time (int BC=0/RD=1), int twoside=0/fompiput=1/fompiget=2/nvshmemget=3, int mywidth, int myheight, int messagecnt)*/
-        levelBCcommuTime_twoside[mylevel[j][j]] += model_message_time(0,0,mywidth[j][j],myheight[j][j],NPROW);
-        levelRDcommuTime_twoside[mylevel[j][j]] += model_message_time(1,0,mywidth[j][j],myheight[j][j],NPCOL);
+        //levelBCcommuTime_twoside[mylevel[j][j]] += model_message_time(0,0,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
+        //levelRDcommuTime_twoside[mylevel[j][j]] += model_message_time(1,0,mywidth[j][j],myheight[j][j],recvmsg[j]);
+        levelBCcommuTime_twoside[mylevel[j][j]] += model_message_time(0,0,mywidth[j][j],myheight[j][j], NPROW);
+        levelRDcommuTime_twoside[mylevel[j][j]] += model_message_time(1,0,mywidth[j][j],myheight[j][j], NPCOL);
 
         //cout << "levelRDcommuTime_twoside (" << mylevel[j][j] << ")" << levelRDcommuTime_twoside[mylevel[j][j]] << endl;
         //cout.flush();
-        levelBCcommuTime_fompiput[mylevel[j][j]] += model_message_time(0,1,mywidth[j][j],myheight[j][j],NPROW);
-        levelRDcommuTime_fompiput[mylevel[j][j]] += model_message_time(1,1,mywidth[j][j],myheight[j][j],NPCOL);
+        levelBCcommuTime_fompiput[mylevel[j][j]] += model_message_time(0,1,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
+        levelRDcommuTime_fompiput[mylevel[j][j]] += model_message_time(1,1,mywidth[j][j],myheight[j][j],recvmsg[j]);
 
-        levelBCcommuTime_fompiget[mylevel[j][j]] += model_message_time(0,2,mywidth[j][j],myheight[j][j],NPROW);
-        levelRDcommuTime_fompiget[mylevel[j][j]] += model_message_time(1,2,mywidth[j][j],myheight[j][j],NPCOL);
+        levelBCcommuTime_fompiget[mylevel[j][j]] += model_message_time(0,2,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
+        levelRDcommuTime_fompiget[mylevel[j][j]] += model_message_time(1,2,mywidth[j][j],myheight[j][j],recvmsg[j]);
 
     }
 
@@ -768,7 +778,7 @@ int main(int argc, char *argv[]) {
 	    idx += 1;
     }
 #ifdef DEBUG_0
-   cout << "level, rank, size, GEMMtime(s), Twosided(s),fompiput(s), fompiget(s)"<< endl;
+   cout << "level, rank, size, Twosided(s),fompiput(s), fompiget(s)"<< endl;
    cout << "Lower Bound (s) = " << lowbound_final/1e9 << endl;
    cout.flush();
 #endif
