@@ -11,7 +11,6 @@
 #include <unordered_set>
 #include <assert.h>     /* assert */
 
-
 using namespace std;
 
 #define TREE_TYPE 2
@@ -303,6 +302,7 @@ double fompicounter_upper_power_of_two(int v)
     v_new=pow(2, ceil(log(v)/log(2)));
     return fompi_counter[(int)log2(v_new)];
 }
+
 double model_message_time(int commu_type, int implement_type, int mywidth, int myheight, int msgcnt){
 /* model_message_time (int BC=0/RD=1), int twoside=0/fompiput=1/fompiget=2/nvshmemget=3, int mywidth, int myheight, int messagecnt)*/
     double time=0.0;
@@ -368,8 +368,6 @@ double model_message_time(int commu_type, int implement_type, int mywidth, int m
 
     return time/1e9;
 }
-
-
 
 vector<double> lowbound_p;
 vector<double> lowbound;
