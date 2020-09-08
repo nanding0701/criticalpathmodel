@@ -794,8 +794,6 @@ int main(int argc, char *argv[]) {
         levelBCcommuTime_nvget[mylevel[j][j]] += model_message_time(0,4,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
         levelRDcommuTime_nvget[mylevel[j][j]] += model_message_time(1,4,mywidth[j][j],myheight[j][j],recvmsg[j]);
 
-
-
         levelrank_BCcommuTime_nvget[mylevel[j][j]][myrank[j][j]] += model_message_time(0,3,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
         levelrank_RDcommuTime_nvget[mylevel[j][j]][myrank[j][j]] += model_message_time(1,3,mywidth[j][j],myheight[j][j],recvmsg[j]);
         levelrank_BCcommuTime_nvput[mylevel[j][j]][myrank[j][j]] += model_message_time(0,4,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
