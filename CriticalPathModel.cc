@@ -316,7 +316,6 @@ double nvput_upper_power_of_two(int v)
     v_new=pow(2, ceil(log(v)/log(2)));
     return fompi[(int)log2(v_new)];
 }
-
 double nvget_upper_power_of_two(int v)
 {
     //one-sided, fompi_put, 4node, on CORI KNL
@@ -327,8 +326,6 @@ double nvget_upper_power_of_two(int v)
     v_new=pow(2, ceil(log(v)/log(2)));
     return fompi[(int)log2(v_new)];
 }
-
-
 double model_message_time(int commu_type, int implement_type, int mywidth, int myheight, int msgcnt){
 /* model_message_time (int BC=0/RD=1), int twoside=0/fompiput=1/fompiget=2/nvshmemget=3, int mywidth, int myheight, int messagecnt)*/
     double time=0.0;
@@ -408,7 +405,6 @@ double model_message_time(int commu_type, int implement_type, int mywidth, int m
 return time/1e9;
 }
 
-
 vector<double> lowbound_p;
 vector<double> lowbound;
 //vector<int,vector<std::unique_ptr<std::mutex>>> lowboundMutexs;
@@ -430,8 +426,6 @@ void count_lowerbound(int i) {
         j++;
     }
 }
-
-
 void count_lowerbound_p(int i){
     int j = 0, l = 0, r = 0;
     while (j <= i) {
@@ -448,10 +442,24 @@ void count_lowerbound_p(int i){
 
 }
 
-
 vector<vector<double>> leveltotbytes;
 unordered_map<int, unordered_map<int, std::unique_ptr<std::mutex>>> leveltotbytesMutexs;
 void count_levelGEMM(int i){
+    int l, r,j;
+    for (j = 0; j<= maxcol; j++) {
+        if (exist_in_map(graph, i, j)){
+            l=mylevel[i][j];
+            r=myrank[i][j];
+            leveltotbytesMutexs[l][r]->lock();
+            leveltotbytes[l][r] += mywidth[i][j] *
+                                   (mywidth[i][j] > myheight[i][j] ? mywidth[i][j] : myheight[i][j]);
+            leveltotbytesMutexs[l][r]->unlock();
+        }
+    }
+}
+
+
+void count_levelCOMM(int i){
     int l, r,j;
     for (j = 0; j<= maxcol; j++) {
         if (exist_in_map(graph, i, j)){
@@ -788,25 +796,28 @@ int main(int argc, char *argv[]) {
         levelrank_RDcommuTime_fompiget[mylevel[j][j]][myrank[j][j]] += model_message_time(1,2,mywidth[j][j],myheight[j][j],recvmsg[j]);
 */
 
-        levelBCcommuTime_nvput[mylevel[j][j]] += model_message_time(0,3,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
-        levelRDcommuTime_nvput[mylevel[j][j]] += model_message_time(1,3,mywidth[j][j],myheight[j][j],recvmsg[j]);
+        //levelBCcommuTime_nvput[mylevel[j][j]] += model_message_time(0,3,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
+        //levelRDcommuTime_nvput[mylevel[j][j]] += model_message_time(1,3,mywidth[j][j],myheight[j][j],recvmsg[j]);
 
-        levelBCcommuTime_nvget[mylevel[j][j]] += model_message_time(0,4,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
-        levelRDcommuTime_nvget[mylevel[j][j]] += model_message_time(1,4,mywidth[j][j],myheight[j][j],recvmsg[j]);
+        //levelBCcommuTime_nvget[mylevel[j][j]] += model_message_time(0,4,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
+        //levelRDcommuTime_nvget[mylevel[j][j]] += model_message_time(1,4,mywidth[j][j],myheight[j][j],recvmsg[j]);
 
-        levelrank_BCcommuTime_nvget[mylevel[j][j]][myrank[j][j]] += model_message_time(0,3,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
-        levelrank_RDcommuTime_nvget[mylevel[j][j]][myrank[j][j]] += model_message_time(1,3,mywidth[j][j],myheight[j][j],recvmsg[j]);
-        levelrank_BCcommuTime_nvput[mylevel[j][j]][myrank[j][j]] += model_message_time(0,4,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
-        levelrank_RDcommuTime_nvput[mylevel[j][j]][myrank[j][j]] += model_message_time(1,4,mywidth[j][j],myheight[j][j],recvmsg[j]);
+        levelrank_BCcommuTime_nvget[mylevel[j][j]][myrank[j][j]] += model_message_time(0,4,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
+        levelrank_RDcommuTime_nvget[mylevel[j][j]][myrank[j][j]] += model_message_time(1,4,mywidth[j][j],myheight[j][j],recvmsg[j]);
+
+        levelrank_BCcommuTime_nvput[mylevel[j][j]][myrank[j][j]] += model_message_time(0,3,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
+        levelrank_RDcommuTime_nvput[mylevel[j][j]][myrank[j][j]] += model_message_time(1,3,mywidth[j][j],myheight[j][j],recvmsg[j]);
         //totaltime_p_withdep[myrank[j][j]] += model_message_time(1,2,mywidth[j][j],myheight[j][j],recvmsg[j]);
     }
-    //for (i = 0; i < maxcol; i++) {
-    //    for (j = 0; j<= maxcol; j++) {
-    //        if (exist_in_map(graph, i, j) && mydep[i][j]!=0){
-    //            totaltime_p_withdep[myrank[i][j]] += model_message_time(3,2,mywidth[j][j],myheight[j][j],mydep[i][j]); //3 recv BC time
-    //        }
-    //    }
-    //}
+
+    long dagnodes=0;
+    for (i = 0; i < maxcol; i++) {
+        for (j = 0; j<= maxcol; j++) {
+            if (exist_in_map(graph, i, j)){
+               dagnodes += 1;
+            }
+        }
+    }
 
 
 
@@ -830,13 +841,34 @@ int main(int argc, char *argv[]) {
 #endif
 
 
+    vector<double> levelcommutime(NPCOL*NPROW, 0);
+    vector<double> levelcommutime_get(NPCOL*NPROW, 0);
+    double tmp_max1, tmp_max2;
+    int tmp_rank, tmp_rank_get;
 
     while (idx < path[index].size()){
-//        totalGEMMtime += levelGEMMtime[idx];
+        tmp_max1=0;
+        tmp_max2=0;
+        totalGEMMtime += levelGEMMtime[idx];
+        //totalCommuTime_nvget += levelBCcommuTime_nvget[idx] + levelRDcommuTime_nvget[idx];
+        //totalCommuTime_nvput += levelBCcommuTime_nvput[idx] + levelRDcommuTime_nvput[idx];
 //        totalCommuTime_twoside += levelBCcommuTime_twoside[idx] + levelRDcommuTime_twoside[idx];
 //        totalCommuTime_fompiput += levelBCcommuTime_fompiput[idx] + levelRDcommuTime_fompiput[idx];
-        totalCommuTime_nvget += levelBCcommuTime_nvget[idx] + levelRDcommuTime_nvget[idx];
-        totalCommuTime_nvput += levelBCcommuTime_nvput[idx] + levelRDcommuTime_nvput[idx];
+        for(j=0;j<NPCOL*NPROW;j++) {
+            levelcommutime[j] = levelrank_BCcommuTime_nvput[idx][j] + levelrank_RDcommuTime_nvput[idx][j];
+            if (levelcommutime[j] > tmp_max1) {
+                tmp_max1 = levelcommutime[j];
+                tmp_rank = j;
+            }
+
+            levelcommutime_get[j] = levelrank_BCcommuTime_nvget[idx][j] + levelrank_RDcommuTime_nvget[idx][j];
+            if (levelcommutime_get[j] > tmp_max2) {
+                tmp_max2 = levelcommutime_get[j];
+                tmp_rank_get = j;
+            }
+        }
+        totalCommuTime_nvput += tmp_max1;
+        totalCommuTime_nvget += tmp_max2;
 //#ifdef DEBUG_0
 //	    cout <<  idx  << " , " << levelGEMMrank[idx] << " , " << levelranknum[idx].size() << " , "   << totalCommuTime_twoside <<" , " << totalCommuTime_fompiput << " , " << totalCommuTime_fompiget << endl;
 //        cout.flush();
@@ -854,32 +886,55 @@ int main(int argc, char *argv[]) {
 
    double overlap_totaltime=0;
    double overlap_totaltime_get=0;
-   double tmp_sum;
+   int levelgemv=0,levelcomm=0;
+    int levelgemv_get=0,levelcomm_get=0;
    vector<double> level_maxtime(NPCOL*NPROW, 0);
    vector<double> level_maxtime_get(NPCOL*NPROW, 0);
    idx =0 ;
    while (idx < path[index].size()){
-       //tmp_sum=0;
+       tmp_max1=0;
+       tmp_max2=0;
        for(j=0;j<NPCOL*NPROW;j++) {
            level_maxtime[j]=max(leveltime_perrank[idx][j]/1e9, levelrank_BCcommuTime_nvput[idx][j]+levelrank_RDcommuTime_nvput[idx][j]);
+           if(level_maxtime[j] >tmp_max1 ) {
+               tmp_max1 = level_maxtime[j];
+               tmp_rank = j;
+           }
+
            level_maxtime_get[j]=max(leveltime_perrank[idx][j]/1e9, levelrank_BCcommuTime_nvget[idx][j]+levelrank_RDcommuTime_nvget[idx][j]);
+           if(level_maxtime_get[j] >tmp_max2 ) {
+               tmp_max2 = level_maxtime_get[j];
+               tmp_rank_get = j;
+           }
+
        }
-       overlap_totaltime += *max_element(level_maxtime.begin(), level_maxtime.end());
-       overlap_totaltime_get += *max_element(level_maxtime_get.begin(), level_maxtime_get.end());
+       overlap_totaltime += tmp_max1;
+       overlap_totaltime_get += tmp_max2;
+       if(leveltime_perrank[idx][tmp_rank]/1e9 > levelrank_BCcommuTime_nvput[idx][tmp_rank]+levelrank_RDcommuTime_nvput[idx][tmp_rank]) {
+           levelgemv += 1;
+       }else{
+           levelcomm +=1;
+       }
+
+       if(leveltime_perrank[idx][tmp_rank_get]/1e9 > levelrank_BCcommuTime_nvget[idx][tmp_rank_get]+levelrank_RDcommuTime_nvget[idx][tmp_rank_get]) {
+           levelgemv_get += 1;
+       }else{
+           levelcomm_get +=1;
+       }
        idx += 1;
    }
 
 
-
+   cout << argv[1] << ", DAG nodes:" << dagnodes << ", DAG levels:" << path[index].size() << endl;
    cout << " --- Using get---------------" << endl;
-   cout << " No overlap time:" << lowbound_final_p/1e9+totalCommuTime_nvget  << " Overlap totaltime:" << overlap_totaltime_get<< endl;
-   cout << ", GEMV time:" << lowbound_final_p/1e9 << ", nvget time:" << totalCommuTime_nvget << endl;
+   cout << " No overlap time:" << totalGEMMtime/1e9+totalCommuTime_nvget << ", GEMV time:" << totalGEMMtime/1e9 << ", nvget time:" << totalCommuTime_nvget << endl;
+   cout << " Overlap totaltime:" << overlap_totaltime_get <<", #level-GEMV: " << levelgemv_get << ", #level-COMM: "<< levelcomm_get <<endl;
    cout << " ----------------------------" << endl;
    cout << ""<< endl;
    //cout << " Pmax totaltime:" << *max_element(totaltime_p_withdep.begin(), totaltime_p_withdep.end()) << endl;
     cout << " --- Using put---------------" << endl;
-    cout << " No overlap time:" << lowbound_final_p/1e9+totalCommuTime_nvput  << " Overlap totaltime:" << overlap_totaltime<< endl;
-    cout << ", GEMV time:" << lowbound_final_p/1e9 << ", nvput time:" << totalCommuTime_nvput << endl;
+    cout << " No overlap time:" << totalGEMMtime/1e9+totalCommuTime_nvput  << ", GEMV time:" << totalGEMMtime/1e9 << ", nvput time:" << totalCommuTime_nvput << endl;
+    cout << " Overlap totaltime:" << overlap_totaltime <<", #level-GEMV: " << levelgemv << ", #level-COMM: "<< levelcomm <<endl;
     cout << " ----------------------------" << endl;
    cout.flush();
 		
