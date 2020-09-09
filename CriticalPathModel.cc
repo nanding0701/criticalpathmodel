@@ -796,11 +796,11 @@ int main(int argc, char *argv[]) {
         levelrank_RDcommuTime_fompiget[mylevel[j][j]][myrank[j][j]] += model_message_time(1,2,mywidth[j][j],myheight[j][j],recvmsg[j]);
 */
 
-        //levelBCcommuTime_nvput[mylevel[j][j]] += model_message_time(0,3,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
-        //levelRDcommuTime_nvput[mylevel[j][j]] += model_message_time(1,3,mywidth[j][j],myheight[j][j],recvmsg[j]);
+        levelBCcommuTime_nvput[mylevel[j][j]] += model_message_time(0,3,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
+        levelRDcommuTime_nvput[mylevel[j][j]] += model_message_time(1,3,mywidth[j][j],myheight[j][j],recvmsg[j]);
 
-        //levelBCcommuTime_nvget[mylevel[j][j]] += model_message_time(0,4,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
-        //levelRDcommuTime_nvget[mylevel[j][j]] += model_message_time(1,4,mywidth[j][j],myheight[j][j],recvmsg[j]);
+        levelBCcommuTime_nvget[mylevel[j][j]] += model_message_time(0,4,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
+        levelRDcommuTime_nvget[mylevel[j][j]] += model_message_time(1,4,mywidth[j][j],myheight[j][j],recvmsg[j]);
 
         levelrank_BCcommuTime_nvget[mylevel[j][j]][myrank[j][j]] += model_message_time(0,4,mywidth[j][j],myheight[j][j],sendoutmsg[j]);
         levelrank_RDcommuTime_nvget[mylevel[j][j]][myrank[j][j]] += model_message_time(1,4,mywidth[j][j],myheight[j][j],recvmsg[j]);
@@ -827,6 +827,8 @@ int main(int argc, char *argv[]) {
     double totalCommuTime_fompiget=0;
     double totalCommuTime_nvget=0;
     double totalCommuTime_nvput=0;
+    double SeqCommuTime_nvget=0;
+    double SeqCommuTime_nvput=0;
     int plevel;
     idx=0;
 
@@ -850,8 +852,8 @@ int main(int argc, char *argv[]) {
         tmp_max1=0;
         tmp_max2=0;
         totalGEMMtime += levelGEMMtime[idx];
-        //totalCommuTime_nvget += levelBCcommuTime_nvget[idx] + levelRDcommuTime_nvget[idx];
-        //totalCommuTime_nvput += levelBCcommuTime_nvput[idx] + levelRDcommuTime_nvput[idx];
+        SeqCommuTime_nvget += levelBCcommuTime_nvget[idx] + levelRDcommuTime_nvget[idx];
+        SeqCommuTime_nvput += levelBCcommuTime_nvput[idx] + levelRDcommuTime_nvput[idx];
 //        totalCommuTime_twoside += levelBCcommuTime_twoside[idx] + levelRDcommuTime_twoside[idx];
 //        totalCommuTime_fompiput += levelBCcommuTime_fompiput[idx] + levelRDcommuTime_fompiput[idx];
         for(j=0;j<NPCOL*NPROW;j++) {
@@ -929,12 +931,14 @@ int main(int argc, char *argv[]) {
    cout << " --- Using get---------------" << endl;
    cout << " No overlap time:" << totalGEMMtime/1e9+totalCommuTime_nvget << ", GEMV time:" << totalGEMMtime/1e9 << ", nvget time:" << totalCommuTime_nvget << endl;
    cout << " Overlap totaltime:" << overlap_totaltime_get <<", #level-GEMV: " << levelgemv_get << ", #level-COMM: "<< levelcomm_get <<endl;
+   cout << " Seq nvget: " << SeqCommuTime_nvget << endl;
    cout << " ----------------------------" << endl;
    cout << ""<< endl;
    //cout << " Pmax totaltime:" << *max_element(totaltime_p_withdep.begin(), totaltime_p_withdep.end()) << endl;
     cout << " --- Using put---------------" << endl;
     cout << " No overlap time:" << totalGEMMtime/1e9+totalCommuTime_nvput  << ", GEMV time:" << totalGEMMtime/1e9 << ", nvput time:" << totalCommuTime_nvput << endl;
     cout << " Overlap totaltime:" << overlap_totaltime <<", #level-GEMV: " << levelgemv << ", #level-COMM: "<< levelcomm <<endl;
+    cout << " Seq nvput: " << SeqCommuTime_nvput << endl;
     cout << " ----------------------------" << endl;
    cout.flush();
 		
