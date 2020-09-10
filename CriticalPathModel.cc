@@ -1,7 +1,8 @@
 #include <stdio.h>
-#include <iostream>
-#include <memory>
 #include <stdlib.h>
+#include <iostream>
+#include <fstream>
+#include <memory>
 #include <string.h>
 #include <vector>
 #include <mutex>
@@ -20,12 +21,11 @@ using namespace std;
 #define BW_CORE 1.5
 #define LAT_CORE 200
 //#define NETWORK_LAT 3810 // send 0 Byte ns
-#define NUM_OF_THREADS 8 // The number of threads to find critical path
+#define NUM_OF_THREADS 1 // The number of threads to find critical path
                          // One thread per core
 unordered_map<int, unordered_map<int, bool>> graph;
 unordered_map<int, unordered_map<int, int>> mylevel;
 unordered_map<int, unordered_map<int, int>> myrank;
-unordered_map<int, unordered_map<int, int>> mydep;
 unordered_map<int, unordered_map<int, std::unique_ptr<std::mutex>>> mylevelMutexs;
 std::unique_ptr<std::mutex> path_mutex;
 unordered_map<int, unordered_map<int, int>> mywidth;
@@ -457,8 +457,6 @@ void count_levelGEMM(int i){
         }
     }
 }
-
-
 void count_levelCOMM(int i){
     int l, r,j;
     for (j = 0; j<= maxcol; j++) {
@@ -472,7 +470,6 @@ void count_levelCOMM(int i){
         }
     }
 }
-
 void wait_pool_finish(ThreadPool& pool, std::string task_name, uint64_t task_count) {
     while (true) {
 #ifdef DEBUG_0
@@ -494,11 +491,10 @@ int main(int argc, char *argv[]) {
     int sup_idx = 0;
     int start_point;
     int idx;
-    int rankid, width,height;
+    int rankid, width,height,readlevel;
     int maxwidth = 0, maxrank = 0; // maxcol = 0;
     int l;
     int index = 0; // index for critical path
-    int size1; //=path.size();
     int modeltime=0;
     int col, row;
     int cur_col,cur_row;
@@ -516,136 +512,182 @@ int main(int argc, char *argv[]) {
 	    fprintf(stderr, "Error reading file\n");
 	    return 1;
     }
-#ifdef DEBUG_0
     printf("NPROW=%d, NPCOL=%d\n",NPROW,NPCOL);
-    printf("Reading the file\n");
+    printf("Reading the matrix\n");
     fflush(stdout);
-#endif
-    count = 0;
+
     double totalsize=0;
+    int dagnodes=0;
     while (fscanf(fp, "%d,%d,%d,%d,%d", &col, &row, &rankid,&width,&height ) == 5) {
         graph[row][col] = 1;
         mylevel[row][col] = 0;
         mylevelMutexs[row][col] = std::make_unique<std::mutex>();
         myrank[row][col] = 0;
-        mydep[row][col] = 0;
         mywidth[row][col] = width;
 	    myheight[row][col] = height;
         maxcol = max(col, maxcol);
         totalsize += width * height;
+        dagnodes += 1;
         //maxwidth = max(width, maxwidth);
         //maxrank = max(rankid, maxrank);
-        count++;
      }
     fclose(fp);
-
-
-
-#ifdef DEBUG_0
-    printf("End reading the file\n");
+    printf("End reading the matrix\n");
     fflush(stdout);
-#endif
 
-    supernode.push_back(0);
-    mylevel[0][0] = 0;
-    mylevelMutexs[0][0] = std::make_unique<std::mutex>();
-    l = 0;
-    // find all start rows
-    for (i = 1; i <= maxcol; i++) {
-        pool.enqueue(&find_supernode, i);
-    }
-
-    wait_pool_finish(pool, "Finding super node", maxcol);
-
-#ifdef DEBUG_0
-    cout << "Matrix blk size = " << maxcol << " x " << maxcol
-         << ", total entries = " << supernode.size()
-         << " search path for every start point" << endl;
-    cout.flush();
-#endif
-    for (auto super_index : supernode) {
-        Cell start(super_index, super_index);
-        vector<Cell> local_path;
-        pool.enqueue(&find_path, start, local_path, l);
-        //find_path(start, path, local_path, l);
-    }
-
-    wait_pool_finish(pool, "Finding Path", supernode.size());
-
-#ifdef DEBUG_0
-    cout << "All tasks finished" << endl;
-    cout  << "path length= " << maxpathlength << endl;
-    cout.flush();
-#endif
-
-#ifdef DEBUG_0
-    cout << "Counting levels" << endl;
-    cout.flush();
-#endif
-    for (auto super_index : supernode) {
-        l=0;
-        Cell start(super_index, super_index);
-        pool.enqueue(&find_level, start, l);
-    }
-
-    wait_pool_finish(pool, "Finding Levels", supernode.size());
-
-#ifdef DEBUG_0
-    cout << "All levels finished" << endl;
-    cout.flush();
-#endif
+    std::string mylevelfile("level_");
+    mylevelfile += argv[1];
+    mylevelfile += "_";
+    mylevelfile += std::to_string(NPROW);
+    mylevelfile += "x";
+    mylevelfile += std::to_string(NPCOL);
 
 
-#ifdef DEBUG_0
-    printf("Process Decomposition....\n");
-    fflush(stdout);
-#endif
-    /* Process Mapping */
-    myrank[0][0] = 0;
-    for (i = 0; i <= maxcol; i++) {
-        pool.enqueue(&find_rank, i);
-    }
+    std::string pathlength("pathlength_");
+    pathlength += argv[1];
+    pathlength += "_";
+    pathlength += std::to_string(NPROW);
+    pathlength += "x";
+    pathlength += std::to_string(NPCOL);
+    //cout << mylevelfile << endl;
 
-    wait_pool_finish(pool, "Finding Rank", maxcol + 1);
+    ifstream ifile;
+    ofstream myfile;
 
-#ifdef DEBUG_1
-    for (i = 0; i <=maxcol; i++) {
-        j=0;
-        while (j<=i){
-            if (exist_in_map(graph, i, j)) {
-                cout << i << j << myrank[i][j] << mylevel[i][j]<< endl;
-                cout.flush();
-            }
-            j++;
+    ifile.open(mylevelfile);
+    if(ifile) {
+        cout<<"Reading levels from existing file: " << mylevelfile << endl;
+        char *cstr = new char[mylevelfile.length() + 1];
+        strcpy(cstr, mylevelfile.c_str());
+        fp = fopen(cstr,"r");
+        if (fp == NULL) {
+            fprintf(stderr, "Error reading file\n");
+            return 1;
         }
-    }
-#endif
-
-    int mmax = 0;
-
-    for (int i = 0; i < path.size(); i++) {
-        if (path[i].size() > mmax) {
-            mmax = path[i].size();
-            index = i;
+        while (fscanf(fp, "%d,%d,%d", &row, &col, &readlevel) == 3) {
+            mylevel[row][col] = readlevel;
+            //cout << row << "," << col << "," << readlevel << endl;
         }
-    }
-#ifdef DEBUG_1
-    idx = 0;
-    while (idx < path[index].size()){
-    	cur_col=path[index][idx].col;
-        cur_row=path[index][idx].row;
+        fclose(fp);
 
-        cout << cur_row << "," << cur_col << "," << myrank[cur_row][cur_col] << "," << mylevel[cur_row][cur_col] << endl;
+        char *cstr1 = new char[pathlength.length() + 1];
+        strcpy(cstr1, pathlength.c_str());
+        fp = fopen(cstr1,"r");
+        if (fp == NULL) {
+            fprintf(stderr, "Error reading file\n");
+            return 1;
+        }
+        while (fscanf(fp, "%d", &readlevel) == 1) {
+            maxpathlength=readlevel;
+            //cout << row << "," << col << "," << readlevel << endl;
+        }
+        fclose(fp);
+
+
+    } else {
+        cout<<"Need to construct DAG" << endl;
+
+
+        supernode.push_back(0);
+        mylevel[0][0] = 0;
+        mylevelMutexs[0][0] = std::make_unique<std::mutex>();
+        l = 0;
+        // find all start rows
+        for (i = 1; i <= maxcol; i++) {
+            pool.enqueue(&find_supernode, i);
+        }
+
+        wait_pool_finish(pool, "---- Finding super node", maxcol);
+
+        cout << "Matrix blk size = " << maxcol << " x " << maxcol
+             << ", total entries = " << supernode.size()
+             << " search path for every start point" << endl;
+        cout.flush();
+        for (auto super_index : supernode) {
+            Cell start(super_index, super_index);
+            vector<Cell> local_path;
+            pool.enqueue(&find_path, start, local_path, l);
+            //find_path(start, path, local_path, l);
+        }
+
+        wait_pool_finish(pool, "---- Finding Path", supernode.size());
+        cout  << "DAG levels: " << maxpathlength << endl;
         cout.flush();
 
-        idx += 1;
-    }
-#endif
 
-#ifdef DEBUG_0
-    cout << "Counting degree time" << endl;
+        myfile.open (pathlength);
+        myfile << maxpathlength << endl;
+        myfile.close();
+
+        cout << "Adjust levels for each node" << endl;
+        cout.flush();
+
+        for (auto super_index : supernode) {
+            l=0;
+            Cell start(super_index, super_index);
+            pool.enqueue(&find_level, start, l);
+        }
+
+        wait_pool_finish(pool, "---- Finding Levels", supernode.size());
+
+        myfile.open (mylevelfile);
+        for(int i=0; i< maxcol;i++ ){
+            for (int j=0; j<maxcol; j++){
+                if(exist_in_map(graph, i, j))
+                myfile << i << "," << j << ","<<mylevel[i][j] << endl;
+            }
+        }
+        myfile.close();
+    }
+
+
+
+    printf("Process Decomposition....\n");
+    fflush(stdout);
+
+    std::string rankfile("ranks_");
+    rankfile += argv[1];
+    rankfile += "_";
+    rankfile += std::to_string(NPROW);
+    rankfile += "x";
+    rankfile += std::to_string(NPCOL);
+    //cout << mylevelfile << endl;
+
+    ifstream ifile1;
+    ifile1.open(rankfile);
+    if(ifile1) {
+        cout << "Reading process layouts from existing file: " << rankfile << endl;
+        char *cstr2 = new char[rankfile.length() + 1];
+        strcpy(cstr2, rankfile.c_str());
+        fp = fopen(cstr2, "r");
+        if (fp == NULL) {
+            fprintf(stderr, "Error reading file\n");
+            return 1;
+        }
+        while (fscanf(fp, "%d,%d,%d", &row, &col, &rankid) == 3) {
+            myrank[row][col] = rankid;
+        }
+        fclose(fp);
+    }else {
+        myrank[0][0] = 0;
+        for (i = 0; i <= maxcol; i++) {
+            pool.enqueue(&find_rank, i);
+        }
+
+        wait_pool_finish(pool, "---- Finding Rank", maxcol + 1);
+
+        myfile.open (rankfile);
+        for(int i=0; i< maxcol;i++ ){
+            for (int j=0; j<maxcol; j++){
+                if(exist_in_map(graph, i, j))
+                    myfile << i << "," << j << ","<<myrank[i][j] << endl;
+            }
+        }
+        myfile.close();
+    }
+
+    cout << "Counting in-out degree " << endl;
     cout.flush();
-#endif
 
 
     /* count out-degree   diag*/
@@ -657,7 +699,6 @@ int main(int argc, char *argv[]) {
         while (j <= maxcol){
             if (graph[j][i] == 1 && myrank[j][i] != rootrank) {
                 sendoutmsg[i] += 1;
-                mydep[j][i] +=1;
             }
             j += 1;
         }
@@ -677,51 +718,45 @@ int main(int argc, char *argv[]) {
     }
 
 
-#ifdef DEBUG_0
-    cout << "Counting LOWER BOUND" << endl;
-    cout.flush();
-#endif
+    //cout << "Counting LOWER BOUND" << endl;
+    //cout.flush();
 
 
-    lowbound_p.resize(NPCOL*NPROW, 0);
+    //lowbound_p.resize(NPCOL*NPROW, 0);
 
-    //cout << "init lowbound_p" << endl;
-    size1=path[index].size();
-    lowbound.resize(size1,0);
-    //cout << "init lowbound" << endl;
+    ////cout << "init lowbound_p" << endl;
+    //lowbound.resize(maxpathlength,0);
 
-    for (i = 0; i <= maxcol; i++) {
-        count_lowerbound_p(i);
-        //pool.enqueue(&count_lowerbound, i);
-    }
-    for (i = 0; i <= maxcol; i++) {
-        count_lowerbound(i);
-        //pool.enqueue(&count_lowerbound, i);
-    }
+    //for (i = 0; i <= maxcol; i++) {
+    //    count_lowerbound_p(i);
+    //    //pool.enqueue(&count_lowerbound, i);
+    //}
+    //for (i = 0; i <= maxcol; i++) {
+    //    count_lowerbound(i);
+    //    //pool.enqueue(&count_lowerbound, i);
+    //}
 
-#ifdef DEBUG_0
-    cout << "Wait for Counting LOWER BOUND" << endl;
-    cout.flush();
-#endif
-    double tmp_max_1=0;
-    double lowbound_final=0;
-    //perfect parallel
-    for (i=0; i<path[index].size(); i++){
-        lowbound_final += ceil(lowbound[i]/levelranknum[i].size());
-    }
-    //Pmax GEMM
-    double lowbound_final_p=0;
-    for (j=0; j<NPROW*NPCOL; j++) {
-        if(lowbound_p[i]>lowbound_final_p ) lowbound_final_p=lowbound_p[i];
-    }
+    //cout << "Wait for Counting LOWER BOUND" << endl;
+    //cout.flush();
+
+    //double tmp_max_1=0;
+    //double lowbound_final=0;
+    ////perfect parallel
+    //for (i=0; i<maxpathlength; i++){
+    //    lowbound_final += ceil(lowbound[i]/levelranknum[i].size());
+    //}
+    ////Pmax GEMM
+    //double lowbound_final_p=0;
+    //for (j=0; j<NPROW*NPCOL; j++) {
+    //    if(lowbound_p[i]>lowbound_final_p ) lowbound_final_p=lowbound_p[i];
+    //}
 
 
-#ifdef DEBUG_0
     cout << "Counting GEMM time" << endl;
     cout.flush();
-#endif
-    leveltotbytes.resize(size1, vector<double>(NPCOL*NPROW, 0));
-    for(i=0;i<path[index].size();i++) {
+
+    leveltotbytes.resize(maxpathlength, vector<double>(NPCOL*NPROW, 0));
+    for(i=0;i<maxpathlength;i++) {
         for (j = 0; j < NPROW * NPCOL; j++) {
             leveltotbytesMutexs[i][j] = std::make_unique<std::mutex>();
         }
@@ -731,13 +766,13 @@ int main(int argc, char *argv[]) {
         pool.enqueue(&count_levelGEMM, i);
     }
 
-    wait_pool_finish(pool, "Counting Level GEMM", maxcol + 1);
+    wait_pool_finish(pool, "---- Counting Level GEMM", maxcol + 1);
 
-    vector<double> levelGEMMtime(size1, 0);
-    vector<int> levelGEMMrank(size1, 0);
-    vector<vector<double>> leveltime_perrank(size1,vector<double>(NPCOL*NPROW,0.0));
+    vector<double> levelGEMMtime(maxpathlength, 0);
+    vector<int> levelGEMMrank(maxpathlength, 0);
+    vector<vector<double>> leveltime_perrank(maxpathlength,vector<double>(NPCOL*NPROW,0.0));
     int tmp_max;
-    for(i=0;i<size1;i++){
+    for(i=0;i<maxpathlength;i++){
         tmp_max=0;
         for(j=0;j<NPCOL*NPROW;j++){
             leveltime_perrank[i][j]+=leveltotbytes[i][j] * 8/BW_CORE + LAT_CORE;
@@ -756,23 +791,21 @@ int main(int argc, char *argv[]) {
 
 
 
-#ifdef DEBUG_0
     cout << "Counting COMM time" << endl;
     cout.flush();
-#endif
-    vector<double> levelBCcommuTime_twoside(size1, 0);
-    vector<double> levelRDcommuTime_twoside(size1, 0);
-    vector<double> levelBCcommuTime_fompiput(size1, 0);
-    vector<double> levelRDcommuTime_fompiput(size1, 0);
-    vector<double> levelBCcommuTime_fompiget(size1, 0);
-    vector<double> levelRDcommuTime_fompiget(size1, 0);
-    vector<double> levelBCcommuTime_nvput(size1, 0);
-    vector<double> levelRDcommuTime_nvput(size1, 0);
-    vector<double> levelRDcommuTime_nvget(size1, 0);
-    vector<double> levelBCcommuTime_nvget(size1, 0);
+    //vector<double> levelBCcommuTime_twoside(maxpathlength, 0);
+    //vector<double> levelRDcommuTime_twoside(maxpathlength, 0);
+    //vector<double> levelBCcommuTime_fompiput(maxpathlength, 0);
+    //vector<double> levelRDcommuTime_fompiput(maxpathlength, 0);
+    //vector<double> levelBCcommuTime_fompiget(maxpathlength, 0);
+    //vector<double> levelRDcommuTime_fompiget(maxpathlength, 0);
+    vector<double> levelBCcommuTime_nvput(maxpathlength, 0);
+    vector<double> levelRDcommuTime_nvput(maxpathlength, 0);
+    vector<double> levelRDcommuTime_nvget(maxpathlength, 0);
+    vector<double> levelBCcommuTime_nvget(maxpathlength, 0);
 
-    unordered_map<int, unordered_map<int, double>> levelrank_BCcommuTime_fompiget;
-    unordered_map<int, unordered_map<int, double>> levelrank_RDcommuTime_fompiget;
+    //unordered_map<int, unordered_map<int, double>> levelrank_BCcommuTime_fompiget;
+    //unordered_map<int, unordered_map<int, double>> levelrank_RDcommuTime_fompiget;
     unordered_map<int, unordered_map<int, double>> levelrank_BCcommuTime_nvget;
     unordered_map<int, unordered_map<int, double>> levelrank_RDcommuTime_nvget;
     unordered_map<int, unordered_map<int, double>> levelrank_BCcommuTime_nvput;
@@ -810,21 +843,11 @@ int main(int argc, char *argv[]) {
         //totaltime_p_withdep[myrank[j][j]] += model_message_time(1,2,mywidth[j][j],myheight[j][j],recvmsg[j]);
     }
 
-    long dagnodes=0;
-    for (i = 0; i < maxcol; i++) {
-        for (j = 0; j<= maxcol; j++) {
-            if (exist_in_map(graph, i, j)){
-               dagnodes += 1;
-            }
-        }
-    }
-
-
 
     double totalGEMMtime=0;
-    double totalCommuTime_twoside=0;
-    double totalCommuTime_fompiput=0;
-    double totalCommuTime_fompiget=0;
+    //double totalCommuTime_twoside=0;
+    //double totalCommuTime_fompiput=0;
+    //double totalCommuTime_fompiget=0;
     double totalCommuTime_nvget=0;
     double totalCommuTime_nvput=0;
     double SeqCommuTime_nvget=0;
@@ -833,14 +856,12 @@ int main(int argc, char *argv[]) {
     idx=0;
 
 //#ifdef DEBUG_0
-//    cout << "Critial path (" << path[index].size() << ") time on each level" << endl;
+//    cout << "Critial path (" << maxpathlength << ") time on each level" << endl;
 //    cout << "level, rank, size,  Towsided(s),fompiput(s), fompiget(s)"<< endl;
 //    cout.flush();
 //#endif
-#ifdef DEBUG_0
     cout << "Counting total time" << endl;
     cout.flush();
-#endif
 
 
     vector<double> levelcommutime(NPCOL*NPROW, 0);
@@ -848,7 +869,7 @@ int main(int argc, char *argv[]) {
     double tmp_max1, tmp_max2;
     int tmp_rank, tmp_rank_get;
 
-    while (idx < path[index].size()){
+    while (idx < maxpathlength){
         tmp_max1=0;
         tmp_max2=0;
         totalGEMMtime += levelGEMMtime[idx];
@@ -889,11 +910,13 @@ int main(int argc, char *argv[]) {
    double overlap_totaltime=0;
    double overlap_totaltime_get=0;
    int levelgemv=0,levelcomm=0;
-    int levelgemv_get=0,levelcomm_get=0;
+   int levelgemv_get=0,levelcomm_get=0;
+   double tmp_max_bc, tmp_max_rd;
+   double tmp_max_bc_get, tmp_max_rd_get;
    vector<double> level_maxtime(NPCOL*NPROW, 0);
    vector<double> level_maxtime_get(NPCOL*NPROW, 0);
    idx =0 ;
-   while (idx < path[index].size()){
+   while (idx < maxpathlength){
        tmp_max1=0;
        tmp_max2=0;
        for(j=0;j<NPCOL*NPROW;j++) {
@@ -904,6 +927,7 @@ int main(int argc, char *argv[]) {
            }
 
            level_maxtime_get[j]=max(leveltime_perrank[idx][j]/1e9, levelrank_BCcommuTime_nvget[idx][j]+levelrank_RDcommuTime_nvget[idx][j]);
+
            if(level_maxtime_get[j] >tmp_max2 ) {
                tmp_max2 = level_maxtime_get[j];
                tmp_rank_get = j;
@@ -927,7 +951,7 @@ int main(int argc, char *argv[]) {
    }
 
 
-   cout << argv[1] << ", DAG nodes:" << dagnodes << ", DAG levels:" << path[index].size() << endl;
+   cout << argv[1] << ", DAG nodes:" << dagnodes << ", DAG levels:" << maxpathlength << endl;
    cout << " --- Using get---------------" << endl;
    cout << " No overlap time:" << totalGEMMtime/1e9+totalCommuTime_nvget << ", GEMV time:" << totalGEMMtime/1e9 << ", nvget time:" << totalCommuTime_nvget << endl;
    cout << " Overlap totaltime:" << overlap_totaltime_get <<", #level-GEMV: " << levelgemv_get << ", #level-COMM: "<< levelcomm_get <<endl;
