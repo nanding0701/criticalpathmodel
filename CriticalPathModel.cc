@@ -689,7 +689,6 @@ int main(int argc, char *argv[]) {
     cout << "Counting in-out degree " << endl;
     cout.flush();
 
-
     /* count out-degree   diag*/
     vector<int> sendoutmsg(maxcol, 0);
     int rootrank=0;
