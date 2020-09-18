@@ -492,7 +492,7 @@ int main(int argc, char *argv[]) {
     int start_point;
     int idx;
     int rankid, width,height,readlevel;
-    int maxwidth = 0, maxrank = 0; // maxcol = 0;
+    int maxwidth = 0, maxheight = 0, maxrank = 0; // maxcol = 0;
     int l;
     int index = 0; // index for critical path
     int modeltime=0;
@@ -528,7 +528,8 @@ int main(int argc, char *argv[]) {
         maxcol = max(col, maxcol);
         totalsize += width * height;
         dagnodes += 1;
-        //maxwidth = max(width, maxwidth);
+        maxwidth = max(width, maxwidth);
+        maxheight = max(height, maxheight);
         //maxrank = max(rankid, maxrank);
      }
     fclose(fp);
@@ -689,6 +690,8 @@ int main(int argc, char *argv[]) {
     cout << "Counting in-out degree " << endl;
     cout.flush();
 
+    int maxmsg = max(maxwidth, maxheight);
+    vector<int> msg_hist(maxmsg+1, 0);
     /* count out-degree   diag*/
     vector<int> sendoutmsg(maxcol, 0);
     int rootrank=0;
@@ -698,6 +701,7 @@ int main(int argc, char *argv[]) {
         while (j <= maxcol){
             if (graph[j][i] == 1 && myrank[j][i] != rootrank) {
                 sendoutmsg[i] += 1;
+                msg_hist[mywidth[i][i]]+=1;
             }
             j += 1;
         }
@@ -711,11 +715,26 @@ int main(int argc, char *argv[]) {
         while (j < i){
             if (graph[i][j] == 1 && myrank[i][j]!= rootrank) {
                 recvmsg[i] += 1;
+                msg_hist[myheight[i][i]]+=1;
             }
             j += 1;
         }
     }
 
+    std::string msgfile("msg_hist_");
+    msgfile += argv[1];
+    msgfile += "_";
+    msgfile += std::to_string(NPROW);
+    msgfile += "x";
+    msgfile += std::to_string(NPCOL);
+
+    myfile.open (msgfile);
+    for(int i=0; i< maxmsg;i++ ){
+        myfile << msg_hist[i] << "," ;
+    }
+    myfile.close();
+
+    return 0;
 
     //cout << "Counting LOWER BOUND" << endl;
     //cout.flush();
