@@ -734,7 +734,7 @@ int main(int argc, char *argv[]) {
     }
     myfile.close();
 
-    return 0;
+    //return 0;
 
     //cout << "Counting LOWER BOUND" << endl;
     //cout.flush();
